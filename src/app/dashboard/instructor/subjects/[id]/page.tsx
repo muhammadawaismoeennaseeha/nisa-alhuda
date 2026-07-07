@@ -15,7 +15,14 @@
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
 import { LinkButton } from "@/components/ui/link-button";
-import { ArrowLeft, BookOpen, Calendar, ExternalLink, Radio } from "lucide-react";
+import {
+  ArrowLeft,
+  BookOpen,
+  Calendar,
+  ClipboardCheck,
+  ExternalLink,
+  Radio,
+} from "lucide-react";
 import { getDashboardViewer } from "@/lib/auth-helpers";
 import { LessonList } from "./lesson-list";
 import {
@@ -120,6 +127,12 @@ export default async function SubjectFolderPage({
         <RecurringClassBanner subject={subject as Subject} />
       )}
 
+      {/* Quiz banner — mirrors what the student sees, so admin can verify
+          the link is set correctly. */}
+      {(subject as Subject).quiz_url && (
+        <QuizBanner quizUrl={(subject as Subject).quiz_url!} />
+      )}
+
       <LessonList
         subjectId={id}
         offeringId={subject.offering_id}
@@ -181,6 +194,35 @@ function RecurringClassBanner({ subject }: { subject: Subject }) {
         }`}
       >
         Join Live
+        <ExternalLink className="h-3.5 w-3.5" />
+      </a>
+    </div>
+  );
+}
+
+function QuizBanner({ quizUrl }: { quizUrl: string }) {
+  return (
+    <div className="mb-6 flex flex-col gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900/60 dark:bg-violet-950/20 sm:flex-row sm:items-center">
+      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 ring-1 ring-violet-200 shrink-0 dark:bg-violet-900/40 dark:ring-violet-900/60">
+        <ClipboardCheck className="h-5 w-5 text-violet-700 dark:text-violet-300" />
+      </div>
+      <div className="flex-1 min-w-0">
+        <h2 className="font-heading font-semibold text-sm">Quiz</h2>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Students see a “Take Quiz” button on this subject that opens in a new tab.
+        </p>
+        <p className="mt-0.5 text-xs text-muted-foreground truncate">
+          <span className="font-mono">{quizUrl}</span>
+        </p>
+      </div>
+      <a
+        href={quizUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-violet-600 hover:bg-violet-700 px-4 py-2 text-sm font-semibold text-white transition-colors press shrink-0"
+      >
+        <ClipboardCheck className="h-4 w-4" />
+        Open Quiz
         <ExternalLink className="h-3.5 w-3.5" />
       </a>
     </div>
