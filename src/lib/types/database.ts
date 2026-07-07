@@ -103,6 +103,8 @@ export interface Subject {
   recurring_start_time: string | null;
   /** Defaults to 60. Used for live-now detection. */
   recurring_duration_minutes: number | null;
+  /** External quiz link (e.g. Google Form). Renders a "Take Quiz" button. */
+  quiz_url: string | null;
   created_at: string;
   updated_at: string;
 }

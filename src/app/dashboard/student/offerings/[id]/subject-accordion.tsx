@@ -23,6 +23,7 @@ import {
   Download,
   ExternalLink,
   Globe,
+  ClipboardCheck,
 } from "lucide-react";
 import { isExternalUrl } from "@/lib/resource-helpers";
 import {
@@ -254,6 +255,15 @@ export function SubjectAccordion({
                     by admin (URL + day + time). */}
                 {hasRecurringSchedule(subject) && (
                   <RecurringClassCard subject={subject} />
+                )}
+
+                {/* Quiz card — persistent Take Quiz button. Renders only
+                    when admin has set an external quiz URL on the subject
+                    (typically a Google Form). Positioned right after the
+                    live class so it sits with the other subject-level
+                    actions, above Resources. */}
+                {subject.quiz_url && (
+                  <QuizCard quizUrl={subject.quiz_url} />
                 )}
 
                 {/* Resources block — surfaces the subject's downloadable
@@ -577,6 +587,39 @@ function RecurringClassCard({
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
         )}
+      </div>
+    </div>
+  );
+}
+
+/**
+ * External quiz launcher — one button that opens the subject's quiz
+ * (Google Form) in a new tab. No schedule state; the button is always
+ * clickable as long as `quiz_url` is set on the subject row.
+ */
+function QuizCard({ quizUrl }: { quizUrl: string }) {
+  return (
+    <div className="ml-3 mb-4">
+      <div className="flex flex-col gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900/60 dark:bg-violet-950/20 sm:flex-row sm:items-center">
+        <div className="flex-1 min-w-0">
+          <div className="flex items-center gap-2">
+            <ClipboardCheck className="h-4 w-4 text-violet-700 dark:text-violet-300" />
+            <h4 className="font-heading font-semibold text-sm">Quiz</h4>
+          </div>
+          <p className="mt-0.5 text-xs text-muted-foreground">
+            Test your understanding — opens in a new tab.
+          </p>
+        </div>
+        <a
+          href={quizUrl}
+          target="_blank"
+          rel="noopener noreferrer"
+          className="inline-flex items-center justify-center gap-1.5 rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700 press shrink-0"
+        >
+          <ClipboardCheck className="h-4 w-4" />
+          Take Quiz
+          <ExternalLink className="h-3.5 w-3.5" />
+        </a>
       </div>
     </div>
   );
