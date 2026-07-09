@@ -3,12 +3,13 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   experimental: {
     serverActions: {
-      // Enrollment receipts are sent to Server Actions as base64. With a 5MB
-      // client-side file cap, the base64 payload can reach ~6.7MB; the
-      // default 1MB limit silently rejected submissions with a generic
-      // "Something went wrong" error. 10MB gives headroom for legitimate
-      // receipts (photos from phones) without inviting DDoS.
-      bodySizeLimit: "10mb",
+      // Receipts are sent to Server Actions as base64. Client caps raw
+      // files at 10MB (modern phone screenshots easily exceed 5MB).
+      // Base64 overhead is ~1.33x, plus JSON envelope — 15MB gives
+      // headroom above the 13.3MB worst case. Default 1MB silently
+      // rejected legitimate submissions with a generic "Something went
+      // wrong" error, so this cap must always match the client cap.
+      bodySizeLimit: "15mb",
     },
   },
 };

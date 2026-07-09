@@ -41,11 +41,15 @@ export function MonthlyPaymentUploader({
     const okType =
       f.type.startsWith("image/") || f.type === "application/pdf";
     if (!okType) {
-      toast.error("Please upload an image or PDF.");
+      toast.error("Please upload an image or PDF.", { duration: 6000 });
       return;
     }
-    if (f.size > 5 * 1024 * 1024) {
-      toast.error("File must be under 5MB.");
+    if (f.size > 10 * 1024 * 1024) {
+      const mb = (f.size / (1024 * 1024)).toFixed(1);
+      toast.error(
+        `File is ${mb}MB — must be under 10MB. Please compress or crop the screenshot and try again.`,
+        { duration: 8000 }
+      );
       return;
     }
     setFile(f);
