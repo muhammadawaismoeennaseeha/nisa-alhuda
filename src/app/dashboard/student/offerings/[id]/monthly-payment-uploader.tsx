@@ -144,7 +144,7 @@ export function MonthlyPaymentUploader({
             ) : (
               <>
                 <Upload className="h-4 w-4 shrink-0" />
-                <span>Select receipt (image or PDF, max 5MB)</span>
+                <span>Select receipt (image or PDF, max 10MB)</span>
               </>
             )}
           </span>
