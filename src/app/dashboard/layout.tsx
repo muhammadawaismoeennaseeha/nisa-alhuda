@@ -4,9 +4,10 @@
  *
  * Also enforces the payment-block gate for students: if a sister is past
  * the 5-day grace period for an unpaid current-cycle fee, every dashboard
- * route except `/dashboard/student/monthly-payment/[id]` (where she can
- * still submit a receipt) and a clean logout is replaced with the
- * BlockedScreen. See `src/lib/payment-block.ts` for the policy.
+ * route except the monthly-payment page and /dashboard/settings has its
+ * main content swapped for <LockedContent> — the sidebar, header, and
+ * nav stay visible so the LMS feels intact, only the feature is gated.
+ * See `src/lib/payment-block.ts` for the debt policy.
  */
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -19,7 +20,7 @@ import { MobileNav } from "./mobile-nav";
 import { SidebarNav, type NavSection } from "./sidebar-nav";
 import { StudentBottomNav } from "./student-bottom-nav";
 import { getBlockingDebt } from "@/lib/payment-block";
-import { BlockedScreen } from "./blocked-screen";
+import { LockedContent } from "./locked-content";
 
 export default async function DashboardLayout({
   children,
@@ -55,17 +56,24 @@ export default async function DashboardLayout({
   }
 
   // Payment-block gate (students only). Runs before every dashboard render
-  // so a blocked sister can't sneak in via cached navigation. The block
-  // screen is the only thing she sees outside of the monthly-payment page.
+  // so a blocked sister can't sneak in via cached navigation. When she IS
+  // blocked, the layout shell (sidebar, header, nav) still renders — only
+  // the main content area is swapped for <LockedContent>. Two paths render
+  // their real children instead: the monthly-payment page (where she can
+  // submit a receipt) and /dashboard/settings (password change / logout).
+  let lockedContent: React.ReactNode = null;
   if (profile.role === "student") {
     const pathname = (await headers()).get("x-pathname") || "";
     const onPaymentPage = pathname.startsWith(
       "/dashboard/student/monthly-payment/"
     );
-    if (!onPaymentPage) {
+    const onSettingsPage = pathname.startsWith("/dashboard/settings");
+    if (!onPaymentPage && !onSettingsPage) {
       const debt = await getBlockingDebt(supabase, profile.id);
       if (debt) {
-        return <BlockedScreen debt={debt} fullName={profile.full_name} />;
+        lockedContent = (
+          <LockedContent debt={debt} fullName={profile.full_name} />
+        );
       }
     }
   }
@@ -126,7 +134,9 @@ export default async function DashboardLayout({
         </header>
 
         <main className="flex-1 px-4 py-5 md:px-8 md:py-7 pb-24 md:pb-7">
-          <div className="mx-auto w-full max-w-6xl">{children}</div>
+          <div className="mx-auto w-full max-w-6xl">
+            {lockedContent ?? children}
+          </div>
         </main>
 
         {profile.role === "student" && <StudentBottomNav />}
