@@ -14,7 +14,19 @@
     "test:e2e": "playwright test",
     "test:e2e:ui": "playwright test --ui",
     "test:e2e:codegen": "playwright codegen http://localhost:3000",
-    "test:e2e:report": "playwright show-report"
+    "test:e2e:report": "playwright show-report",
+    "typecheck": "tsc --noEmit",
+    "lint:fix": "eslint --fix",
+    "env:local": "node scripts/use-env.mjs local",
+    "env:hosted": "node scripts/use-env.mjs hosted",
+    "db:start": "supabase start",
+    "db:stop": "supabase stop",
+    "db:reset": "supabase db reset",
+    "db:status": "supabase status",
+    "db:studio": "open http://127.0.0.1:54323",
+    "seed": "tsx scripts/seed.ts",
+    "seed:e2e": "tsx scripts/seed-e2e-user.ts",
+    "verify": "npm run typecheck && npm run lint && npm run test:run"
   },
   "dependencies": {
     "@base-ui/react": "^1.3.0",

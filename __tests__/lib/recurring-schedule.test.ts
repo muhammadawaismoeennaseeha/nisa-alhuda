@@ -19,6 +19,7 @@ const baseSubject: Subject = {
   recurring_duration_minutes: 60,
   recurring_meeting_url: "https://zoom.us/j/123",
   recurring_schedule_label: "Mondays 6–7 PM PKT",
+  quiz_url: null,
   created_at: "2026-01-01T00:00:00Z",
   updated_at: "2026-01-01T00:00:00Z",
 };

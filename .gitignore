@@ -47,3 +47,11 @@ supabase/.temp/
 
 # nested scratch folders must not drag their dependencies into the repo
 docs/node_modules/
+
+# env profiles used by the switcher (scripts/use-env.mjs).
+# `.env*` above already ignores them; the example file is the exception.
+!.env.example
+
+# playwright
+/playwright-report/
+/test-results/
