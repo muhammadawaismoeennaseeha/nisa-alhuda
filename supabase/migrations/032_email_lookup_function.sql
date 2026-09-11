@@ -1,3 +1,14 @@
+-- ============================================================
+-- Migration 032: email lookup helpers (was 011b_email_lookup_function.sql)
+-- ============================================================
+-- Renamed out of the "11b" slot because the Supabase CLI requires a
+-- purely numeric version prefix: it silently SKIPPED this file with
+-- "file name must match pattern <timestamp>_name.sql", so every fresh
+-- database was missing get_profile_by_email() and email_exists() while
+-- the app called both (enrollment + admin credentials). Ordering is
+-- irrelevant here -- these are CREATE OR REPLACE FUNCTION statements with
+-- no dependants inside the migration set -- so the tail is a safe slot.
+
 -- Helper function: look up a profile by email via auth.users join
 -- Used by the enrollment email check (service_role context)
 CREATE OR REPLACE FUNCTION public.get_profile_by_email(lookup_email TEXT)

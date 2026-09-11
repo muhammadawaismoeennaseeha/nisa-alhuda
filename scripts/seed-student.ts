@@ -93,6 +93,9 @@ async function seedStudent() {
       payment_receipt_url: "test/receipt.jpg",
       payment_amount: 15000,
       payment_method: "bank_transfer",
+      // NOT NULL since the guest-enrollment migrations: an enrollment always
+      // records the address that applied, even when a student_id is attached.
+      applicant_email: "student@nisaalhuda.com",
     });
 
     if (error) {

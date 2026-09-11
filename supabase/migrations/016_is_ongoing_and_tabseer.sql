@@ -26,7 +26,12 @@ INSERT INTO offerings (
   schedule_start,
   is_new,
   is_ongoing
-) VALUES (
+)
+-- INSERT ... SELECT rather than VALUES: the row materialises only when the
+-- instructor profile actually exists. On a fresh database (local stack, CI, a
+-- new environment) that profile has not been created yet, and a bare VALUES
+-- insert aborted the whole migration on offerings_instructor_id_fkey.
+SELECT
   'Tabseer ul Quran',
   'tabseer-ul-quran',
   'Soulful weekly sessions of Qur''an reflection with Muallimah Sana Ahmed. Free | Females Only.',
@@ -40,7 +45,7 @@ INSERT INTO offerings (
   '2025-04-25',
   false,
   true
-)
+FROM profiles WHERE id = '0b4f37d6-b1fe-4913-b22e-8134a65a7c7f'
 ON CONFLICT (slug) DO UPDATE SET
   short_description = EXCLUDED.short_description,
   description = EXCLUDED.description,
