@@ -2,24 +2,40 @@
  * Student Learning Hub — the main learning page for an enrolled offering.
  * Shows subjects with expandable lessons, live class links, and recordings.
  * Only accessible to students with approved enrollment.
+ *
+ * Phase 4 re-skins this onto the shared course vocabulary in
+ * `@/components/course` — the same header, cards and surfaces the admin course
+ * workspace uses — so a course looks like one thing from both sides.
+ *
+ * Recordings are read-only here: `recording_url` is selected as part of
+ * `lessons.*` and handed to `SubjectAccordion`, which renders the watch
+ * affordances. Nothing on this route writes that column.
  */
 import { notFound, redirect } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { LinkButton } from "@/components/ui/link-button";
 import {
-  ArrowLeft,
-  Calendar,
+  CalendarDays,
   BookOpen,
+  PlayCircle,
   Video,
   Clock,
-  CheckCircle,
   MessageCircle,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
+import { CoursePageHeader } from "@/components/course/course-page-header";
+import { MetricCard } from "@/components/course/course-cards";
+import {
+  courseButtonPrimary,
+  courseCard,
+} from "@/components/course/course-surface";
 import { SubjectAccordion } from "./subject-accordion";
 import { MonthlyPaymentCard } from "./monthly-payment-card";
 import { monthlyAmountForEnrollment } from "@/lib/monthly-payments";
+import {
+  computeNextOccurrence,
+  hasRecurringSchedule,
+  isLiveNow,
+} from "@/lib/recurring-schedule";
 import type {
   Subject,
   Lesson,
@@ -29,6 +45,24 @@ import type {
   Resource,
 } from "@/lib/types/database";
 import { partitionLessons } from "@/lib/resource-helpers";
+
+type SubjectWithInstructor = Subject & {
+  instructor: { full_name: string } | null;
+};
+
+const TYPE_LABEL: Record<string, string> = {
+  program: "Program",
+  course: "Course",
+  workshop: "Workshop",
+};
+
+function formatDay(value: string | Date) {
+  return new Date(value).toLocaleDateString("en-PK", {
+    month: "short",
+    day: "numeric",
+    year: "numeric",
+  });
+}
 
 export default async function StudentLearningHubPage({
   params,
@@ -131,7 +165,7 @@ export default async function StudentLearningHubPage({
   // across the offering, in one shot. We then group them per subject so
   // the accordion can show them under the Resources heading.
   const allResourceLessonIds = Object.values(resourceLessonIdsBySubject).flat();
-  let resourcesBySubject: Record<string, Resource[]> = {};
+  const resourcesBySubject: Record<string, Resource[]> = {};
   if (allResourceLessonIds.length > 0) {
     const { data: resourcesRows } = await supabase
       .from("resources")
@@ -175,197 +209,216 @@ export default async function StudentLearningHubPage({
     (l) => l.scheduled_at && new Date(l.scheduled_at) > now
   );
 
+  const typedSubjects = (subjects || []) as SubjectWithInstructor[];
+
+  // ── Header + metric derivations (all read-only) ──
+
+  // How many classes have a recording the student can watch. Counting
+  // `recording_url` never writes it; this is the same read the accordion does.
+  const recordingsAvailable = classLessonsFlat.filter(
+    (l) => l.recording_url
+  ).length;
+
+  // "Ustadha Maryam · Ustadha Hafsa · Jan 5, 2026 — Jun 30, 2026"
+  const instructorNames = Array.from(
+    new Set(
+      typedSubjects
+        .map((s) => s.instructor?.full_name)
+        .filter((n): n is string => !!n)
+    )
+  );
+  const dateRange = offering.schedule_start
+    ? `${formatDay(offering.schedule_start)}${
+        offering.schedule_end ? ` — ${formatDay(offering.schedule_end)}` : ""
+      }`
+    : null;
+  const context =
+    [instructorNames.join(" · "), dateRange].filter(Boolean).join(" · ") ||
+    undefined;
+
+  // The soonest live class across the course: every subject's recurring slot
+  // plus the next dated lesson, whichever lands first.
+  const nextLiveAt = [
+    ...typedSubjects
+      .filter(hasRecurringSchedule)
+      .map((s) => computeNextOccurrence(s, now)?.start ?? null),
+    upcomingLesson?.live_class_link && upcomingLesson.scheduled_at
+      ? new Date(upcomingLesson.scheduled_at)
+      : null,
+  ]
+    .filter((d): d is Date => d !== null)
+    .sort((a, b) => a.getTime() - b.getTime())[0];
+
+  const nextLiveLabel = nextLiveAt
+    ? nextLiveAt.toLocaleDateString("en-PK", {
+        timeZone: "Asia/Karachi",
+        weekday: "short",
+      })
+    : "—";
+
+  // A header "Join live class" button only while a class is actually in
+  // progress. Outside that window the per-subject card stays the single,
+  // day-gated Join — a course-level button that is always clickable would
+  // hand students a link to a meeting that isn't running.
+  const liveSubject = typedSubjects.find((s) => isLiveNow(s, now));
+
   return (
     <div>
-      {/* Back nav */}
-      <LinkButton
-        variant="ghost"
-        href="/dashboard/student"
-        className="mb-4"
-      >
-        <ArrowLeft className="h-4 w-4 mr-1.5" />
-        Back to My Learning
-      </LinkButton>
+      <CoursePageHeader
+        backHref="/dashboard/student"
+        backLabel="My Learning"
+        name={offering.title}
+        context={context}
+        description={offering.short_description}
+        badges={[
+          { label: "Enrolled", tone: "success" },
+          { label: TYPE_LABEL[offering.type] ?? "Course", tone: "brand" },
+        ]}
+        actions={
+          liveSubject && (
+            <a
+              href={liveSubject.recurring_meeting_url!}
+              target="_blank"
+              rel="noopener noreferrer"
+              className={cn(courseButtonPrimary, "press")}
+            >
+              <Video className="h-4 w-4" />
+              Join live class
+            </a>
+          )
+        }
+      />
 
-      {/* WhatsApp Group — prominent top banner for enrolled students */}
+      {/* Monthly subscription card — renders only for monthly-fee offerings */}
+      {offering.fee_type === "monthly" && (
+        <div className="mt-5">
+          <MonthlyPaymentCard
+            enrollmentId={enrollment.id}
+            enrolledAt={enrollment.created_at}
+            monthlyAmount={monthly.amount}
+            currency={monthly.currency}
+            payments={monthlyPayments}
+          />
+        </div>
+      )}
+
+      {/* WhatsApp Group — prominent banner for enrolled students */}
       {offering.whatsapp_link && (
         <a
           href={offering.whatsapp_link}
           target="_blank"
           rel="noopener noreferrer"
-          className="mb-5 flex items-center gap-3 rounded-xl border border-[#25D366]/30 bg-gradient-to-r from-[#25D366]/10 via-[#128C7E]/5 to-transparent px-4 py-3 transition-all hover:border-[#25D366]/60 hover:shadow-sm press"
+          className="press mt-5 flex items-center gap-3 rounded-[var(--radius)] border border-[#25D366]/30 bg-gradient-to-r from-[#25D366]/10 via-[#128C7E]/5 to-transparent px-4 py-3 transition-all hover:border-[#25D366]/60 hover:shadow-sm"
         >
-          <div className="h-10 w-10 rounded-full bg-[#25D366] flex items-center justify-center shrink-0">
+          <div className="flex h-10 w-10 shrink-0 items-center justify-center rounded-full bg-[#25D366]">
             <MessageCircle className="h-5 w-5 text-white" />
           </div>
-          <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold text-[#128C7E]">Join WhatsApp Group</p>
-            <p className="text-xs text-muted-foreground truncate">
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold text-[#128C7E]">
+              Join WhatsApp Group
+            </p>
+            <p className="truncate text-xs text-muted-foreground">
               Stay connected with your sisters and instructor in our class group.
             </p>
           </div>
-          <span className="text-xs font-medium text-[#128C7E] shrink-0">Open →</span>
+          <span className="shrink-0 text-xs font-medium text-[#128C7E]">
+            Open &rarr;
+          </span>
         </a>
       )}
 
-      {/* Monthly subscription card — renders only for monthly-fee offerings */}
-      {offering.fee_type === "monthly" && (
-        <MonthlyPaymentCard
-          enrollmentId={enrollment.id}
-          enrolledAt={enrollment.created_at}
-          monthlyAmount={monthly.amount}
-          currency={monthly.currency}
-          payments={monthlyPayments}
+      {/* Metric strip — the mockup's three student cards, on Nisa's data. */}
+      <div className="mt-5 grid grid-cols-1 gap-3.5 sm:grid-cols-3">
+        <MetricCard
+          icon={BookOpen}
+          value={`${completedCount}/${totalLessons}`}
+          label={
+            totalLessons > 0
+              ? `Lessons watched · ${completionPct}%`
+              : "Lessons watched"
+          }
         />
-      )}
-
-      {/* Offering Header */}
-      <div className="mb-6">
-        <div className="flex items-center gap-2 mb-2">
-          <Badge variant="outline">
-            {offering.type === "program"
-              ? "Program"
-              : offering.type === "course"
-                ? "Course"
-                : "Workshop"}
-          </Badge>
-          <Badge variant="default">Enrolled</Badge>
-        </div>
-        <h1 className="text-2xl font-bold mb-2">{offering.title}</h1>
-        {offering.short_description && (
-          <p className="text-sm text-muted-foreground max-w-2xl">
-            {offering.short_description}
-          </p>
-        )}
-
-        {/* Quick stats */}
-        <div className="flex flex-wrap items-center gap-4 mt-4">
-          {offering.schedule_start && (
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <Calendar className="h-4 w-4" />
-              <span>
-                {new Date(offering.schedule_start).toLocaleDateString("en-PK", {
-                  month: "short",
-                  day: "numeric",
-                  year: "numeric",
-                })}
-                {offering.schedule_end && (
-                  <>
-                    {" — "}
-                    {new Date(offering.schedule_end).toLocaleDateString(
-                      "en-PK",
-                      { month: "short", day: "numeric", year: "numeric" }
-                    )}
-                  </>
-                )}
-              </span>
-            </div>
-          )}
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <BookOpen className="h-4 w-4" />
-            <span>
-              {subjects?.length || 0}{" "}
-              {(subjects?.length || 0) === 1 ? "subject" : "subjects"}
-            </span>
-          </div>
-          <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-            <Video className="h-4 w-4" />
-            <span>
-              {totalLessons} {totalLessons === 1 ? "lesson" : "lessons"}
-            </span>
-          </div>
-          {totalLessons > 0 && (
-            <div className="flex items-center gap-1.5 text-sm text-muted-foreground">
-              <CheckCircle className="h-4 w-4" />
-              <span>
-                {completedCount}/{totalLessons} completed ({completionPct}%)
-              </span>
-            </div>
-          )}
-        </div>
-
-        {/* Overall progress bar */}
-        {totalLessons > 0 && (
-          <div className="mt-4 max-w-md">
-            <div className="flex items-center justify-between text-xs text-muted-foreground mb-1.5">
-              <span>Overall Progress</span>
-              <span className={completionPct === 100 ? "text-green-600 font-semibold" : ""}>
-                {completionPct}%
-              </span>
-            </div>
-            <div className="h-2.5 rounded-full bg-muted overflow-hidden">
-              <div
-                className={`h-full rounded-full transition-all duration-500 ${
-                  completionPct === 100 ? "bg-green-500" : "bg-primary"
-                }`}
-                style={{ width: `${completionPct}%` }}
-              />
-            </div>
-          </div>
-        )}
+        <MetricCard
+          icon={PlayCircle}
+          value={recordingsAvailable}
+          label="Recordings available"
+          tint="success"
+        />
+        <MetricCard
+          icon={CalendarDays}
+          value={nextLiveLabel}
+          label="Next live class"
+          tint="warning"
+        />
       </div>
 
       {/* Upcoming class notice */}
       {upcomingLesson && upcomingLesson.live_class_link && (
-        <Card className="mb-6 border-primary/30 bg-primary/5">
-          <CardContent className="p-4">
-            <div className="flex items-center gap-3">
-              <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
-                <Clock className="h-5 w-5 text-primary" />
-              </div>
-              <div className="flex-1 min-w-0">
-                <p className="text-sm font-medium">
-                  Upcoming: {upcomingLesson.title}
-                </p>
-                <p className="text-xs text-muted-foreground">
-                  {new Date(upcomingLesson.scheduled_at!).toLocaleString(
-                    "en-PK",
-                    {
-                      timeZone: "Asia/Karachi",
-                      weekday: "long",
-                      day: "numeric",
-                      month: "short",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    }
-                  )}
-                </p>
-              </div>
-              <a
-                href={upcomingLesson.live_class_link}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors press shrink-0"
-              >
-                Join Class
-              </a>
-            </div>
-          </CardContent>
-        </Card>
+        <div
+          className={cn(
+            courseCard,
+            "mt-5 flex flex-col gap-3 p-[18px] sm:flex-row sm:items-center"
+          )}
+        >
+          <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-sand-50 text-sand-700 dark:bg-amber-950/50 dark:text-amber-300">
+            <Clock className="h-[18px] w-[18px]" />
+          </div>
+          <div className="min-w-0 flex-1">
+            <p className="text-sm font-semibold">
+              Upcoming: {upcomingLesson.title}
+            </p>
+            <p className="text-xs text-muted-foreground">
+              {new Date(upcomingLesson.scheduled_at!).toLocaleString("en-PK", {
+                timeZone: "Asia/Karachi",
+                weekday: "long",
+                day: "numeric",
+                month: "short",
+                hour: "2-digit",
+                minute: "2-digit",
+              })}
+            </p>
+          </div>
+          <a
+            href={upcomingLesson.live_class_link}
+            target="_blank"
+            rel="noopener noreferrer"
+            className={cn(courseButtonPrimary, "press justify-center")}
+          >
+            <Video className="h-4 w-4" />
+            Join Class
+          </a>
+        </div>
       )}
 
       {/* Subjects & Lessons */}
-      {!subjects || subjects.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground text-lg mb-2">
+      <div className="mt-5">
+        {typedSubjects.length === 0 ? (
+          <div
+            className={cn(
+              courseCard,
+              "flex flex-col items-center justify-center px-[18px] py-12 text-center"
+            )}
+          >
+            <div className="mb-3.5 flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-rose-50 text-rose-500 dark:bg-rose-950/50 dark:text-rose-300">
+              <BookOpen className="h-[18px] w-[18px]" />
+            </div>
+            <p className="font-heading text-[15px] font-semibold">
               Content coming soon
             </p>
-            <p className="text-sm text-muted-foreground">
+            <p className="mt-1 text-sm text-muted-foreground">
               Your instructor is preparing the lessons. Check back soon!
             </p>
-          </CardContent>
-        </Card>
-      ) : (
-        <SubjectAccordion
-          subjects={subjects as (Subject & { instructor: { full_name: string } | null })[]}
-          lessonsBySubject={classLessonsBySubject}
-          resourcesBySubject={resourcesBySubject}
-          completedLessonIds={completedLessonIds}
-          offeringId={id}
-        />
-      )}
+          </div>
+        ) : (
+          <SubjectAccordion
+            subjects={typedSubjects}
+            lessonsBySubject={classLessonsBySubject}
+            resourcesBySubject={resourcesBySubject}
+            completedLessonIds={completedLessonIds}
+            offeringId={id}
+          />
+        )}
+      </div>
     </div>
   );
 }

@@ -6,7 +6,6 @@
  * This is a server component that wraps the client uploader for the active
  * (unpaid or rejected) cycle — passing all cycles down as props.
  */
-import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { StatusBadge, type StatusKey } from "@/components/ui/status-badge";
 import {
@@ -17,6 +16,7 @@ import {
   XCircle,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { courseCard } from "@/components/course/course-surface";
 import {
   cyclesBetween,
   firstOfMonth,
@@ -81,8 +81,8 @@ export function MonthlyPaymentCard({
   }).length;
 
   return (
-    <Card className="mb-6 border-primary/20">
-      <CardContent className="p-4 md:p-5">
+    <div className={courseCard}>
+      <div className="p-4 md:p-5">
         <div className="flex items-start gap-3 mb-4">
           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
             <CalendarDays className="h-5 w-5 text-primary" />
@@ -223,8 +223,8 @@ export function MonthlyPaymentCard({
             </div>
           </div>
         )}
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 
@@ -235,8 +235,8 @@ export function MonthlyPaymentCard({
  */
 function FullyWaivedCard() {
   return (
-    <Card className="mb-6 border-primary/30 bg-gradient-to-br from-primary/5 via-primary/0 to-transparent">
-      <CardContent className="p-4 md:p-5">
+    <div className={cn(courseCard, "bg-gradient-to-br from-rose-50 via-transparent to-transparent dark:from-rose-950/30")}>
+      <div className="p-4 md:p-5">
         <div className="flex items-start gap-3">
           <div className="h-10 w-10 rounded-xl bg-primary/10 flex items-center justify-center shrink-0">
             <HeartHandshake className="h-5 w-5 text-primary" />
@@ -261,8 +261,8 @@ function FullyWaivedCard() {
             </p>
           </div>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }
 

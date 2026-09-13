@@ -4,9 +4,18 @@
  * pending enrollments. Greeting + stats + live-now banner live above the
  * grid so students always land on a meaningful overview.
  */
+import Link from "next/link";
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import {
+  courseButtonPrimary,
+  courseCard,
+  courseCardHover,
+  courseTag,
+  iconTints,
+  pillBase,
+  pillTones,
+} from "@/components/course/course-surface";
 import { LinkButton } from "@/components/ui/link-button";
 import {
   BookOpen,
@@ -473,96 +482,100 @@ export default async function StudentDashboardPage() {
                 monthlyStatus === "owed");
 
             return (
-              <Card
+              <div
                 key={enrollment.id}
-                className="group overflow-hidden transition-all hover:-translate-y-0.5 hover:shadow-md"
+                className={cn(courseCard, courseCardHover, "group p-5")}
               >
-                <CardContent className="p-5">
-                  <div className="mb-3 flex items-start justify-between">
-                    <div className="flex h-11 w-11 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/15 transition-transform group-hover:scale-105">
-                      <BookOpen className="h-5 w-5 text-primary" />
-                    </div>
-                    <div className="flex items-center gap-2">
-                      {monthlyDue && (
-                        <Badge
-                          variant="outline"
-                          className="border-amber-300 text-amber-700 dark:text-amber-400"
-                        >
-                          <AlertCircle className="mr-1 h-3 w-3" />
-                          Payment due
-                        </Badge>
-                      )}
-                      <Badge variant="default">Enrolled</Badge>
-                    </div>
+                <div className="mb-3 flex items-start justify-between gap-2">
+                  <div
+                    className={cn(
+                      "flex h-[38px] w-[38px] items-center justify-center rounded-[10px] transition-transform group-hover:scale-105",
+                      iconTints.brand
+                    )}
+                  >
+                    <BookOpen className="h-[18px] w-[18px]" />
                   </div>
-
-                  <h3 className="mb-1 font-heading text-lg font-semibold leading-tight">
-                    {offering.title}
-                  </h3>
-
-                  {offering.short_description && (
-                    <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">
-                      {offering.short_description}
-                    </p>
-                  )}
-
-                  <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
-                    {offering.schedule_start && (
-                      <span className="flex items-center gap-1">
-                        <Calendar className="h-3 w-3" />
-                        {new Date(offering.schedule_start).toLocaleDateString(
-                          "en-PK",
-                          {
-                            month: "short",
-                            day: "numeric",
-                            year: "numeric",
-                          }
-                        )}
+                  <div className="flex flex-wrap items-center justify-end gap-1.5">
+                    {monthlyDue && (
+                      <span className={cn(pillBase, pillTones.warning)}>
+                        Payment due
                       </span>
                     )}
-                    <span className="flex items-center gap-1">
-                      <Video className="h-3 w-3" />
-                      {count} {count === 1 ? "lesson" : "lessons"}
+                    <span className={cn(pillBase, pillTones.success)}>
+                      Enrolled
                     </span>
-                    <Badge variant="outline" className="text-xs">
-                      {offering.type === "program"
-                        ? "Program"
-                        : offering.type === "course"
-                          ? "Course"
-                          : "Workshop"}
-                    </Badge>
                   </div>
+                </div>
 
-                  {count > 0 && (
-                    <div className="mb-4 flex items-center gap-3">
-                      <ProgressRing pct={pct} size={52} strokeWidth={4} />
-                      <div>
-                        <p
-                          className={`text-sm font-semibold ${
-                            pct === 100 ? "text-emerald-600" : "text-foreground"
-                          }`}
-                        >
-                          {pct === 100 ? "Complete!" : `${pct}% done`}
-                        </p>
-                        <p className="text-xs text-muted-foreground">
-                          {completed} of {count}{" "}
-                          {count === 1 ? "lesson" : "lessons"} watched
-                        </p>
-                      </div>
-                    </div>
+                <h3 className="font-heading mb-1 text-lg leading-tight font-semibold">
+                  {offering.title}
+                </h3>
+
+                {offering.short_description && (
+                  <p className="mb-3 line-clamp-2 text-sm text-muted-foreground">
+                    {offering.short_description}
+                  </p>
+                )}
+
+                <div className="mb-4 flex flex-wrap items-center gap-x-3 gap-y-1.5 text-xs text-muted-foreground">
+                  {offering.schedule_start && (
+                    <span className="flex items-center gap-1">
+                      <Calendar className="h-3 w-3" />
+                      {new Date(offering.schedule_start).toLocaleDateString(
+                        "en-PK",
+                        {
+                          month: "short",
+                          day: "numeric",
+                          year: "numeric",
+                        }
+                      )}
+                    </span>
                   )}
+                  <span className="flex items-center gap-1">
+                    <Video className="h-3 w-3" />
+                    {count} {count === 1 ? "lesson" : "lessons"}
+                  </span>
+                  <span className={courseTag}>
+                    {offering.type === "program"
+                      ? "Program"
+                      : offering.type === "course"
+                        ? "Course"
+                        : "Workshop"}
+                  </span>
+                </div>
 
-                  <div className="border-t pt-3">
-                    <LinkButton
-                      className="press w-full rounded-full"
-                      href={`/dashboard/student/offerings/${offering.id}`}
-                    >
-                      {pct === 100 ? "Review Course" : "Continue Learning"}
-                      <ArrowRight className="ml-1.5 h-3.5 w-3.5" />
-                    </LinkButton>
+                {count > 0 && (
+                  <div className="mb-4 flex items-center gap-3">
+                    <ProgressRing pct={pct} size={52} strokeWidth={4} />
+                    <div>
+                      <p
+                        className={`text-sm font-semibold ${
+                          pct === 100 ? "text-sage-700" : "text-foreground"
+                        }`}
+                      >
+                        {pct === 100 ? "Complete!" : `${pct}% done`}
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        {completed} of {count}{" "}
+                        {count === 1 ? "lesson" : "lessons"} watched
+                      </p>
+                    </div>
                   </div>
-                </CardContent>
-              </Card>
+                )}
+
+                <div className="border-t border-border-soft pt-3.5 dark:border-border">
+                  <Link
+                    href={`/dashboard/student/offerings/${offering.id}`}
+                    className={cn(
+                      courseButtonPrimary,
+                      "press w-full justify-center"
+                    )}
+                  >
+                    {pct === 100 ? "Review Course" : "Continue Learning"}
+                    <ArrowRight className="h-3.5 w-3.5" />
+                  </Link>
+                </div>
+              </div>
             );
           })}
         </div>

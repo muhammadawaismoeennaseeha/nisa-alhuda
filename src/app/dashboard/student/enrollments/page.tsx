@@ -3,8 +3,8 @@
  * Covers pending, approved, rejected, and Financial Assistance states.
  */
 import { createClient } from "@/lib/supabase/server";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import { courseCard, courseTag } from "@/components/course/course-surface";
 import { LinkButton } from "@/components/ui/link-button";
 import { StatusBadge, STATUS_CONFIG, type StatusKey } from "@/components/ui/status-badge";
 import {
@@ -12,11 +12,14 @@ import {
   ArrowRight,
   AlertTriangle,
 } from "lucide-react";
-import type { Offering } from "@/lib/types/database";
+import type { Enrollment, Offering } from "@/lib/types/database";
 import { formatPaidAmount } from "@/lib/constants";
 import { FaReceiptUpload } from "./fa-receipt-upload";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { EmptyState } from "@/components/dashboard/empty-state";
+
+/** An enrollment row with its offering joined in. */
+type EnrollmentRow = Enrollment & { offering: Offering | null };
 
 export default async function StudentEnrollmentsPage() {
   const supabase = await createClient();
@@ -50,7 +53,7 @@ export default async function StudentEnrollmentsPage() {
         />
       ) : (
         <div className="space-y-3">
-          {enrollments.map((enrollment: any) => {
+          {(enrollments as EnrollmentRow[]).map((enrollment) => {
             const offering = enrollment.offering as Offering;
 
             // ── FA state derivations ──
@@ -89,15 +92,15 @@ export default async function StudentEnrollmentsPage() {
             const { icon: StatusIcon, bubbleBg, bubbleColor } = STATUS_CONFIG[statusKey];
 
             return (
-              <Card
+              <div
                 key={enrollment.id}
-                className={
-                  faAwaitingReceipt
-                    ? "border-amber-400 bg-amber-50/30 dark:bg-amber-950/10"
-                    : ""
-                }
+                className={cn(
+                  courseCard,
+                  faAwaitingReceipt &&
+                    "border-amber-400 bg-amber-50/30 dark:bg-amber-950/10"
+                )}
               >
-                <CardContent className="p-4">
+                <div className="p-4">
                   <div className="flex flex-col sm:flex-row sm:items-center gap-3">
                     {/* Status icon */}
                     <div
@@ -109,7 +112,7 @@ export default async function StudentEnrollmentsPage() {
                     {/* Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-2 mb-1 flex-wrap">
-                        <h3 className="font-semibold truncate">
+                        <h3 className="font-heading truncate text-[15px] font-semibold">
                           {offering?.title}
                         </h3>
                         <StatusBadge status={statusKey} />
@@ -136,13 +139,13 @@ export default async function StudentEnrollmentsPage() {
                           </span>
                         )}
                         {offering?.type && (
-                          <Badge variant="outline" className="text-xs">
+                          <span className={courseTag}>
                             {offering.type === "program"
                               ? "Program"
                               : offering.type === "course"
                                 ? "Course"
                                 : "Workshop"}
-                          </Badge>
+                          </span>
                         )}
                       </div>
 
@@ -260,8 +263,8 @@ export default async function StudentEnrollmentsPage() {
                       )}
                     </div>
                   </div>
-                </CardContent>
-              </Card>
+                </div>
+              </div>
             );
           })}
         </div>

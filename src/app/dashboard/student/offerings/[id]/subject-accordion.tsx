@@ -1,7 +1,26 @@
 /**
- * Subject Accordion — expandable subject sections with lesson cards.
- * Students can view lesson details, join live classes, watch recordings,
- * and mark lessons as complete with progress tracking.
+ * Subject Accordion — the student's view of a course's subjects and classes.
+ *
+ * Phase 4 re-skins this onto the shared course vocabulary in
+ * `@/components/course/course-surface`: each subject is a white course card on
+ * cream, and its classes are a hairline-separated list of rows, each led by the
+ * rose numbered square from the signed-off mockup.
+ *
+ * ─── Recordings ────────────────────────────────────────────────────────────
+ *
+ * This is the watch side of `lessons.recording_url`. It is read-only here —
+ * nothing on this screen writes that column. The re-skin is presentation only,
+ * and all three existing watch paths survive it unchanged:
+ *
+ *   1. YouTube URLs still render `<RecordingPlayer url={lesson.recording_url}/>`
+ *      full-width under the row, which lazily boots Plyr on click.
+ *   2. Non-YouTube URLs still render a plain `target="_blank"` anchor straight
+ *      at `lesson.recording_url`.
+ *   3. Neither is gated on schedule or completion — a lesson that has a
+ *      recording offers it, full stop. `isPast` only decides whether the
+ *      "Recording available" chip is shown next to it.
+ *
+ * The completion toggle ("Watch" / "Watched") writes `lesson_progress` only.
  */
 "use client";
 
@@ -10,10 +29,7 @@ import { useRouter } from "next/navigation";
 import {
   ChevronDown,
   Video,
-  Calendar,
   PlayCircle,
-  BookOpen,
-  User,
   CheckCircle,
   Circle,
   Loader2,
@@ -25,6 +41,7 @@ import {
   Globe,
   ClipboardCheck,
 } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { isExternalUrl } from "@/lib/resource-helpers";
 import {
   hasRecurringSchedule,
@@ -35,9 +52,16 @@ import {
 } from "@/lib/recurring-schedule";
 import { RecordingPlayer } from "@/components/lesson/recording-player";
 import { isYouTubeUrl } from "@/lib/video-helpers";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
+import {
+  courseButton,
+  courseButtonPrimary,
+  courseCard,
+  courseIconButton,
+  courseTag,
+  iconTints,
+  pillBase,
+  pillTones,
+} from "@/components/course/course-surface";
 import { ProgressRing } from "@/components/ui/progress-ring";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
@@ -50,6 +74,13 @@ interface SubjectAccordionProps {
   completedLessonIds: string[];
   offeringId: string;
 }
+
+/** The hairline that separates rows inside a course card. */
+const HAIRLINE = "border-border-soft dark:border-border";
+
+/** The uppercase section label above Resources / Classes. */
+const SECTION_LABEL =
+  "flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground";
 
 const FILE_ICON_MAP: Record<string, typeof FileText> = {
   pdf: FileText,
@@ -69,6 +100,9 @@ function formatFileSize(bytes: number) {
   if (bytes < 1024) return `${bytes} B`;
   if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
+function plural(n: number, one: string, many = `${one}s`) {
+  return `${n} ${n === 1 ? one : many}`;
 }
 
 export function SubjectAccordion({
@@ -174,56 +208,58 @@ export function SubjectAccordion({
   }
 
   return (
-    <div className="space-y-4">
-      {subjects.map((subject) => {
+    <div className="space-y-3">
+      {subjects.map((subject, subjectIndex) => {
         const lessons = lessonsBySubject[subject.id] || [];
+        const resources = resourcesBySubject[subject.id] ?? [];
         const isOpen = openSubjects.has(subject.id);
         const progress = getSubjectProgress(subject.id);
 
+        // "6 lessons · 3 watched · Ustadha Maryam" — the mockup's subject
+        // meta line, filled with Nisa's real per-student progress.
+        const meta = [
+          plural(lessons.length, "lesson"),
+          progress.total > 0 ? `${progress.completed} watched` : null,
+          subject.instructor?.full_name,
+        ]
+          .filter(Boolean)
+          .join(" · ");
+
+        const hasIntro =
+          !!subject.description ||
+          hasRecurringSchedule(subject) ||
+          !!subject.quiz_url ||
+          resources.length > 0;
+
         return (
-          <Card key={subject.id}>
-            {/* Subject Header — clickable */}
+          <div key={subject.id} className={courseCard}>
+            {/* Subject header — clickable */}
             <button
               onClick={() => toggleSubject(subject.id)}
-              className="w-full p-4 flex items-center gap-3 text-left hover:bg-muted/30 transition-colors rounded-t-xl"
+              aria-expanded={isOpen}
+              className="flex w-full cursor-pointer items-center gap-3 px-[18px] py-[15px] text-left"
             >
-              <div className="h-9 w-9 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                <BookOpen className="h-4 w-4 text-primary" />
-              </div>
-
-              <div className="flex-1 min-w-0">
-                <div className="flex items-center gap-2">
-                  <h3 className="font-heading font-semibold truncate">
+              <span className="min-w-0 flex-1">
+                <span className="font-heading flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold">
+                  <span>
+                    <span className="text-rose-500 dark:text-rose-300">
+                      {subjectIndex + 1}
+                    </span>
+                    <span className="mx-1.5 text-muted-foreground">·</span>
                     {subject.title}
-                  </h3>
-                  <Badge variant="outline" className="text-xs shrink-0">
-                    {lessons.length}{" "}
-                    {lessons.length === 1 ? "lesson" : "lessons"}
-                  </Badge>
+                  </span>
                   {progress.total > 0 && progress.pct === 100 && (
-                    <Badge className="text-xs bg-green-100 text-green-700 dark:bg-green-950/30 dark:text-green-400 shrink-0">
-                      <CheckCircle className="h-3 w-3 mr-1" />
+                    <span className={cn(pillBase, pillTones.success)}>
                       Complete
-                    </Badge>
+                    </span>
                   )}
-                </div>
-                <div className="flex items-center gap-3 mt-0.5">
-                  {subject.instructor && (
-                    <p className="text-xs text-muted-foreground flex items-center gap-1">
-                      <User className="h-3 w-3" />
-                      {subject.instructor.full_name}
-                    </p>
-                  )}
-                  {progress.total > 0 && (
-                    <p className="text-xs text-muted-foreground">
-                      {progress.completed}/{progress.total} done
-                    </p>
-                  )}
-                </div>
+                </span>
+                <span className="mt-0.5 block truncate text-xs text-muted-foreground">
+                  {meta}
+                </span>
+              </span>
 
-              </div>
-
-              {/* Circular progress ring — shows subject completion at a glance */}
+              {/* Circular progress ring — subject completion at a glance */}
               {progress.total > 0 && (
                 <ProgressRing
                   pct={progress.pct}
@@ -235,128 +271,148 @@ export function SubjectAccordion({
               )}
 
               <ChevronDown
-                className={`h-4 w-4 text-muted-foreground transition-transform duration-200 shrink-0 ${
-                  isOpen ? "rotate-180" : ""
-                }`}
+                className={cn(
+                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
+                  !isOpen && "-rotate-90"
+                )}
               />
             </button>
 
-            {/* Subject Description + Resources + Classes */}
             {isOpen && (
-              <CardContent className="pt-0 pb-4 px-4">
-                {subject.description && (
-                  <p className="text-sm text-muted-foreground mb-4 ml-12">
-                    {subject.description}
-                  </p>
-                )}
+              <>
+                {/* Description + live class + quiz + resources */}
+                {hasIntro && (
+                  <div
+                    className={cn(
+                      "space-y-3.5 border-t px-[18px] py-4",
+                      HAIRLINE
+                    )}
+                  >
+                    {subject.description && (
+                      <p className="text-sm text-muted-foreground">
+                        {subject.description}
+                      </p>
+                    )}
 
-                {/* Recurring class card — the always-visible Join button.
-                    Renders only when the subject has a full schedule set
-                    by admin (URL + day + time). */}
-                {hasRecurringSchedule(subject) && (
-                  <RecurringClassCard subject={subject} />
-                )}
+                    {/* Recurring class card — the always-visible Join button.
+                        Renders only when the subject has a full schedule set
+                        by admin (URL + day + time). */}
+                    {hasRecurringSchedule(subject) && (
+                      <RecurringClassCard subject={subject} />
+                    )}
 
-                {/* Quiz card — persistent Take Quiz button. Renders only
-                    when admin has set an external quiz URL on the subject
-                    (typically a Google Form). Positioned right after the
-                    live class so it sits with the other subject-level
-                    actions, above Resources. */}
-                {subject.quiz_url && (
-                  <QuizCard quizUrl={subject.quiz_url} />
-                )}
+                    {/* Quiz card — persistent Take Quiz button. Renders only
+                        when admin has set an external quiz URL on the subject
+                        (typically a Google Form). */}
+                    {subject.quiz_url && <QuizCard quizUrl={subject.quiz_url} />}
 
-                {/* Resources block — surfaces the subject's downloadable
-                    files at the top of the expanded panel. */}
-                {(resourcesBySubject[subject.id]?.length ?? 0) > 0 && (
-                  <div className="ml-3 mb-4">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                      <FileText className="h-3.5 w-3.5 text-primary" />
-                      Resources
-                      <span className="font-normal normal-case tracking-normal">
-                        · downloadable for this subject
-                      </span>
-                    </h4>
-                    <div className="space-y-2">
-                      {resourcesBySubject[subject.id]!.map((r) => {
-                        const isLink = isExternalUrl(r.file_url);
-                        const Icon = isLink ? Globe : getFileIcon(r.title);
-                        return (
-                          <div
-                            key={r.id}
-                            className="flex items-center gap-3 rounded-lg border bg-background p-2.5"
-                          >
-                            <div className="h-8 w-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                              <Icon className="h-4 w-4 text-primary" />
-                            </div>
-                            <div className="flex-1 min-w-0">
-                              <p className="text-sm font-medium truncate">
-                                {r.title}
-                              </p>
-                              <p className="text-xs text-muted-foreground truncate">
-                                {isLink ? (
-                                  <>
-                                    <span className="text-primary font-medium">
-                                      External link
-                                    </span>{" "}
-                                    · {new URL(r.file_url).hostname}
-                                  </>
-                                ) : (
-                                  <>
-                                    {formatFileSize(r.file_size)} ·{" "}
-                                    <span className="uppercase">
-                                      {r.file_type}
-                                    </span>
-                                  </>
+                    {/* Resources block — the subject's downloadable files. */}
+                    {resources.length > 0 && (
+                      <div>
+                        <h4 className={SECTION_LABEL}>
+                          <FileText className="h-3.5 w-3.5 text-rose-500 dark:text-rose-300" />
+                          Resources
+                          <span className="font-normal tracking-normal normal-case">
+                            · downloadable for this subject
+                          </span>
+                        </h4>
+                        <div className="mt-2 space-y-2">
+                          {resources.map((r) => {
+                            const isLink = isExternalUrl(r.file_url);
+                            const Icon = isLink ? Globe : getFileIcon(r.title);
+                            return (
+                              <div
+                                key={r.id}
+                                className={cn(
+                                  "flex items-center gap-3 rounded-[10px] border p-2.5",
+                                  HAIRLINE
                                 )}
-                              </p>
-                            </div>
-                            <ResourceActions
-                              path={r.file_url}
-                              fileName={r.title}
-                            />
-                          </div>
-                        );
-                      })}
-                    </div>
+                              >
+                                <div
+                                  className={cn(
+                                    "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+                                    iconTints.brand
+                                  )}
+                                >
+                                  <Icon className="h-4 w-4" />
+                                </div>
+                                <div className="min-w-0 flex-1">
+                                  <p className="truncate text-[13.5px] font-medium">
+                                    {r.title}
+                                  </p>
+                                  <p className="truncate text-xs text-muted-foreground">
+                                    {isLink ? (
+                                      <>
+                                        <span className="font-medium text-rose-700 dark:text-rose-300">
+                                          External link
+                                        </span>{" "}
+                                        · {new URL(r.file_url).hostname}
+                                      </>
+                                    ) : (
+                                      <>
+                                        {formatFileSize(r.file_size)} ·{" "}
+                                        <span className="uppercase">
+                                          {r.file_type}
+                                        </span>
+                                      </>
+                                    )}
+                                  </p>
+                                </div>
+                                <ResourceActions
+                                  path={r.file_url}
+                                  fileName={r.title}
+                                />
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 )}
 
                 {/* Classes (real scheduled or live-linked sessions) */}
                 {lessons.length === 0 ? (
-                  <div className="ml-12 py-6 text-center">
-                    <p className="text-sm text-muted-foreground">
-                      No classes have been added to this subject yet. Check back soon.
-                    </p>
-                  </div>
+                  <p
+                    className={cn(
+                      "border-t px-[18px] py-6 text-center text-sm text-muted-foreground",
+                      HAIRLINE
+                    )}
+                  >
+                    No classes have been added to this subject yet. Check back
+                    soon.
+                  </p>
                 ) : (
-                  <div className="space-y-2 ml-3">
-                    <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2 flex items-center gap-1.5">
-                      <Calendar className="h-3.5 w-3.5 text-primary" />
+                  <div className={cn("border-t", HAIRLINE)}>
+                    <h4 className={cn(SECTION_LABEL, "px-[18px] pt-3.5 pb-1")}>
                       Classes
                     </h4>
-                    {lessons.map((lesson, lessonIndex) => (
-                      <LessonCard
-                        key={lesson.id}
-                        lesson={lesson}
-                        index={lessonIndex + 1}
-                        isCompleted={completedSet.has(lesson.id)}
-                        isLoading={loadingLesson === lesson.id}
-                        onToggleComplete={() => toggleComplete(lesson.id)}
-                      />
-                    ))}
+                    <ul>
+                      {lessons.map((lesson, lessonIndex) => (
+                        <LessonRow
+                          key={lesson.id}
+                          lesson={lesson}
+                          index={lessonIndex + 1}
+                          isCompleted={completedSet.has(lesson.id)}
+                          isLoading={loadingLesson === lesson.id}
+                          onToggleComplete={() => toggleComplete(lesson.id)}
+                        />
+                      ))}
+                    </ul>
                   </div>
                 )}
-              </CardContent>
+              </>
             )}
-          </Card>
+          </div>
         );
       })}
     </div>
   );
 }
 
-function LessonCard({
+/* ── Lesson row ───────────────────────────────────────────────────────── */
+
+function LessonRow({
   lesson,
   index,
   isCompleted,
@@ -379,131 +435,118 @@ function LessonCard({
   const recordingIsYoutube =
     lesson.recording_url && isYouTubeUrl(lesson.recording_url);
 
+  const when = scheduledAt
+    ? `${scheduledAt.toLocaleString("en-PK", {
+        timeZone: "Asia/Karachi",
+        weekday: "short",
+        day: "numeric",
+        month: "short",
+        hour: "2-digit",
+        minute: "2-digit",
+      })} PKT`
+    : null;
+
   return (
-    <div
-      className={`rounded-lg border transition-colors ${
-        isCompleted
-          ? "bg-green-50/50 dark:bg-green-950/10 border-green-200 dark:border-green-900/30"
-          : "bg-background hover:bg-muted/20"
-      }`}
+    <li
+      className={cn(
+        "border-t",
+        HAIRLINE,
+        isCompleted && "bg-sage-50/60 dark:bg-emerald-950/10"
+      )}
     >
-      <div className="flex items-start gap-3 p-3">
-      {/* Completion toggle */}
-      <button
-        onClick={onToggleComplete}
-        disabled={isLoading}
-        className="mt-0.5 shrink-0 transition-colors flex flex-col items-center gap-0.5"
-        title={isCompleted ? "Mark as incomplete" : "Mark as complete"}
-      >
-        {isLoading ? (
-          <Loader2 className="h-6 w-6 text-muted-foreground animate-spin" />
-        ) : isCompleted ? (
-          <CheckCircle className="h-6 w-6 text-green-600" />
-        ) : (
-          <Circle className="h-6 w-6 text-muted-foreground/40 hover:text-primary" />
-        )}
-        {!isLoading && (
-          <span
-            className={`text-[9px] font-medium leading-none ${
-              isCompleted ? "text-green-600" : "text-muted-foreground/60"
-            }`}
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-[18px] py-3">
+        {/* The mockup's numbered square. */}
+        <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-lg bg-rose-50 text-xs font-bold text-rose-600 tabular-nums dark:bg-rose-950/50 dark:text-rose-300">
+          {index}
+        </span>
+
+        {/* Lesson info */}
+        <div className="min-w-0 flex-1">
+          <p
+            className={cn(
+              "text-[13.5px] font-medium",
+              isCompleted && "text-muted-foreground line-through"
+            )}
           >
-            {isCompleted ? "Watched" : "Watch"}
-          </span>
-        )}
-      </button>
-
-      {/* Lesson info */}
-      <div className="flex-1 min-w-0">
-        <h4
-          className={`font-medium text-sm mb-1 ${
-            isCompleted ? "text-muted-foreground line-through" : ""
-          }`}
-        >
-          {lesson.title}
-        </h4>
-
-        {lesson.description && (
-          <p className="text-xs text-muted-foreground line-clamp-2 mb-2">
-            {lesson.description}
+            {lesson.title}
           </p>
-        )}
-
-        {/* Meta info */}
-        <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-          {scheduledAt && (
-            <span className="flex items-center gap-1">
-              <Calendar className="h-3 w-3" />
-              {scheduledAt.toLocaleString("en-PK", {
-                timeZone: "Asia/Karachi",
-                weekday: "short",
-                day: "numeric",
-                month: "short",
-                hour: "2-digit",
-                minute: "2-digit",
-              })}{" "}
-              PKT
-            </span>
+          {when && (
+            <p className="mt-0.5 text-xs text-muted-foreground">{when}</p>
           )}
-          {isUpcoming && (
-            <Badge
-              variant="outline"
-              className="text-xs text-amber-600 border-amber-300"
-            >
-              Upcoming
-            </Badge>
-          )}
-          {isPast && lesson.recording_url && (
-            <Badge
-              variant="outline"
-              className="text-xs text-green-600 border-green-300"
-            >
-              Recording Available
-            </Badge>
+          {lesson.description && (
+            <p className="mt-0.5 line-clamp-2 text-xs text-muted-foreground">
+              {lesson.description}
+            </p>
           )}
         </div>
-      </div>
 
-      {/* Action buttons (defined further down) */}
-      <div className="flex items-center gap-2 shrink-0">
+        {isUpcoming && (
+          <span className={cn(pillBase, pillTones.warning)}>Upcoming</span>
+        )}
+
+        {isPast && lesson.recording_url && (
+          <span className={courseTag}>Recording available</span>
+        )}
+
         {/* Live class link */}
         {lesson.live_class_link && isUpcoming && (
           <a
             href={lesson.live_class_link}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90 transition-colors press"
+            className={cn(courseButtonPrimary, "press")}
           >
-            <Video className="h-3 w-3" />
-            Join
+            <Video className="h-3.5 w-3.5" />
+            Join live
           </a>
         )}
 
-        {/* Recording link — pill button only when URL is NOT YouTube
-            (YouTube URLs render as a full-width inline embed below). */}
+        {/* Recording link — a plain external anchor, used only when the URL is
+            NOT YouTube. YouTube URLs render as the inline player below. */}
         {lesson.recording_url && !recordingIsYoutube && (
           <a
             href={lesson.recording_url}
             target="_blank"
             rel="noopener noreferrer"
-            className="inline-flex items-center gap-1.5 rounded-lg border px-3 py-1.5 text-xs font-medium hover:bg-muted transition-colors"
+            className={courseButton}
           >
-            <PlayCircle className="h-3 w-3" />
-            Watch
+            <PlayCircle className="h-3.5 w-3.5" />
+            Watch recording
           </a>
         )}
-      </div>
+
+        {/* Completion toggle */}
+        <button
+          onClick={onToggleComplete}
+          disabled={isLoading}
+          className={cn(
+            courseButton,
+            "cursor-pointer",
+            isCompleted &&
+              "border-sage-200 bg-sage-50 text-sage-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300"
+          )}
+          title={isCompleted ? "Mark as incomplete" : "Mark as complete"}
+        >
+          {isLoading ? (
+            <Loader2 className="h-3.5 w-3.5 animate-spin" />
+          ) : isCompleted ? (
+            <CheckCircle className="h-3.5 w-3.5" />
+          ) : (
+            <Circle className="h-3.5 w-3.5" />
+          )}
+          {isCompleted ? "Watched" : "Watch"}
+        </button>
       </div>
 
-      {/* Collapsible YouTube player — full width, below the lesson header.
+      {/* Collapsible YouTube player — full width, below the lesson row.
           Renders only a "Watch recording ▼" button until the student
           clicks it, so the iframe URL never ends up in the initial DOM. */}
       {recordingIsYoutube && lesson.recording_url && (
-        <div className="px-3 pb-3">
+        <div className="px-[18px] pb-3.5">
           <RecordingPlayer url={lesson.recording_url} />
         </div>
       )}
-    </div>
+    </li>
   );
 }
 
@@ -514,25 +557,24 @@ function LessonCard({
  * Join button forever, plus a "Live now" pulse when the class is in
  * progress.
  */
-function RecurringClassCard({
-  subject,
-}: {
-  subject: Subject;
-}) {
-  const live = isLiveNow(subject);
-  const occ = computeNextOccurrence(subject);
+function RecurringClassCard({ subject }: { subject: Subject }) {
+  // One timestamp for the whole render — live state, next occurrence and the
+  // countdown all have to agree with each other.
+  const now = new Date();
+  const live = isLiveNow(subject, now);
+  const occ = computeNextOccurrence(subject, now);
   const label = scheduleDisplayLabel(subject) ?? "Recurring class";
   const url = subject.recurring_meeting_url!;
   // Join button only shows on the configured weekly day-of-week (PKT).
   // On other days the card still renders with the schedule label and
   // countdown, but no clickable Join — students can't accidentally
   // open Tuesday's Arabic meeting on a Saturday afternoon.
-  const showJoin = live || isClassDayPkt(subject);
+  const showJoin = live || isClassDayPkt(subject, now);
 
   // "Starts in 2h 15m" / "Starts in 3 days" string for the upcoming case.
   let countdown: string | null = null;
   if (!live && occ) {
-    const diffMs = occ.start.getTime() - Date.now();
+    const diffMs = occ.start.getTime() - now.getTime();
     if (diffMs > 0) {
       const mins = Math.round(diffMs / 60000);
       if (mins < 60) countdown = `Starts in ${mins} min`;
@@ -543,51 +585,53 @@ function RecurringClassCard({
   }
 
   return (
-    <div className="ml-3 mb-4">
-      <div
-        className={`flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center ${
-          live
-            ? "border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20"
-            : "border-primary/30 bg-primary/5"
-        }`}
-      >
-        <div className="flex-1 min-w-0">
-          <div className="flex flex-wrap items-center gap-2">
-            <h4 className="font-heading font-semibold text-sm">
-              Live class
-            </h4>
-            {live && (
-              <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5">
-                <span className="relative flex h-1.5 w-1.5">
-                  <span className="absolute inline-flex h-full w-full rounded-full bg-white opacity-75 animate-ping" />
-                  <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
-                </span>
-                Live now
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-[10px] border p-3.5 sm:flex-row sm:items-center",
+        live
+          ? "border-sage-200 bg-sage-50 dark:border-emerald-900 dark:bg-emerald-950/20"
+          : "border-border-soft bg-rose-50/50 dark:border-border dark:bg-rose-950/20"
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex flex-wrap items-center gap-2">
+          <h4 className="font-heading text-[13.5px] font-semibold">
+            Live class
+          </h4>
+          {live && (
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-700 px-2 py-0.5 text-[10px] font-bold tracking-[0.05em] uppercase text-white dark:bg-emerald-700">
+              <span className="relative flex h-1.5 w-1.5">
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
+                <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
               </span>
-            )}
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
-          {countdown && (
-            <p className="mt-0.5 text-xs font-medium text-primary">{countdown}</p>
+              Live now
+            </span>
           )}
         </div>
-        {showJoin && (
+        <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
+        {countdown && (
+          <p className="mt-0.5 text-xs font-medium text-rose-700 dark:text-rose-300">
+            {countdown}
+          </p>
+        )}
+      </div>
+      {showJoin && (
         <a
           href={url}
           target="_blank"
           rel="noopener noreferrer"
-          className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors press shrink-0 ${
-            live
-              ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-              : "bg-primary hover:bg-primary/90 text-primary-foreground"
-          }`}
+          className={cn(
+            courseButtonPrimary,
+            "press justify-center",
+            live &&
+              "border-sage-700 bg-sage-700 hover:border-sage-700/90 hover:bg-sage-700/90 dark:border-emerald-700 dark:bg-emerald-700"
+          )}
         >
           <Video className="h-4 w-4" />
           Join Live
           <ExternalLink className="h-3.5 w-3.5" />
         </a>
-        )}
-      </div>
+      )}
     </div>
   );
 }
@@ -599,28 +643,31 @@ function RecurringClassCard({
  */
 function QuizCard({ quizUrl }: { quizUrl: string }) {
   return (
-    <div className="ml-3 mb-4">
-      <div className="flex flex-col gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900/60 dark:bg-violet-950/20 sm:flex-row sm:items-center">
-        <div className="flex-1 min-w-0">
-          <div className="flex items-center gap-2">
-            <ClipboardCheck className="h-4 w-4 text-violet-700 dark:text-violet-300" />
-            <h4 className="font-heading font-semibold text-sm">Quiz</h4>
-          </div>
-          <p className="mt-0.5 text-xs text-muted-foreground">
-            Test your understanding — opens in a new tab.
-          </p>
+    <div
+      className={cn(
+        "flex flex-col gap-3 rounded-[10px] border p-3.5 sm:flex-row sm:items-center",
+        HAIRLINE
+      )}
+    >
+      <div className="min-w-0 flex-1">
+        <div className="flex items-center gap-2">
+          <ClipboardCheck className="h-4 w-4 text-steel-700 dark:text-sky-300" />
+          <h4 className="font-heading text-[13.5px] font-semibold">Quiz</h4>
         </div>
-        <a
-          href={quizUrl}
-          target="_blank"
-          rel="noopener noreferrer"
-          className="inline-flex items-center justify-center gap-1.5 rounded-full bg-violet-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-violet-700 press shrink-0"
-        >
-          <ClipboardCheck className="h-4 w-4" />
-          Take Quiz
-          <ExternalLink className="h-3.5 w-3.5" />
-        </a>
+        <p className="mt-0.5 text-xs text-muted-foreground">
+          Test your understanding — opens in a new tab.
+        </p>
       </div>
+      <a
+        href={quizUrl}
+        target="_blank"
+        rel="noopener noreferrer"
+        className={cn(courseButton, "press justify-center")}
+      >
+        <ClipboardCheck className="h-4 w-4" />
+        Take Quiz
+        <ExternalLink className="h-3.5 w-3.5" />
+      </a>
     </div>
   );
 }
@@ -685,12 +732,13 @@ function ResourceActions({
   }
 
   return (
-    <div className="flex items-center gap-1 shrink-0">
-      <Button
-        variant="ghost"
-        size="icon-sm"
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        className={courseIconButton}
         onClick={handleOpen}
         disabled={busy !== null}
+        aria-label={external ? "Open link in new tab" : "Open in new tab"}
         title={external ? "Open link in new tab" : "Open in new tab"}
       >
         {busy === "open" ? (
@@ -698,13 +746,14 @@ function ResourceActions({
         ) : (
           <ExternalLink className="h-3.5 w-3.5" />
         )}
-      </Button>
+      </button>
       {!external && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
+        <button
+          type="button"
+          className={courseIconButton}
           onClick={handleDownload}
           disabled={busy !== null}
+          aria-label="Download"
           title="Download"
         >
           {busy === "download" ? (
@@ -712,7 +761,7 @@ function ResourceActions({
           ) : (
             <Download className="h-3.5 w-3.5" />
           )}
-        </Button>
+        </button>
       )}
     </div>
   );
