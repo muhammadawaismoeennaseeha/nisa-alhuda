@@ -44,6 +44,9 @@ export default async function AdminLayout({
   // suspend/unsuspend. Letting an instructor in would let them grant
   // themselves the admin role, so this stays admin-only too.
   const onUsersRoute = pathname.startsWith("/dashboard/admin/users");
+  // The audit log names people and describes money/role decisions.
+  // Admin-only, same reasoning as the user directory.
+  const onAuditRoute = pathname.startsWith("/dashboard/admin/audit-log");
 
   // Admins have full access.
   if (role === "admin") return <>{children}</>;
@@ -51,7 +54,7 @@ export default async function AdminLayout({
   // Instructors get every admin page EXCEPT billing and the user
   // directory (privilege-escalation surface).
   if (role === "instructor") {
-    if (onBillingRoute || onUsersRoute) redirect("/dashboard");
+    if (onBillingRoute || onUsersRoute || onAuditRoute) redirect("/dashboard");
     return <>{children}</>;
   }
 

@@ -6,6 +6,7 @@
  */
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/db/auth";
+import { logAudit } from "@/lib/db/audit";
 import {
   sendEnrollmentApprovedEmail,
   sendFaApprovedEmail,
@@ -67,6 +68,15 @@ export async function manualEnroll(
       offeringId
     ).catch(() => {});
   }
+
+  await logAudit({
+    actorId: auth.userId,
+    action: "enrollment.manual_created",
+    entityType: "enrollment",
+    entityId: offeringId,
+    summary: `Manually enrolled a student (fee ${price})`,
+    metadata: { studentId, offeringId, price },
+  });
 
   return { success: true };
 }
@@ -161,6 +171,18 @@ export async function approveFinancialAssistance(
     });
   }
 
+  await logAudit({
+    actorId: auth.userId,
+    action: "enrollment.fa_approved",
+    entityType: "enrollment",
+    entityId: enrollmentId,
+    summary:
+      approvedAmount === 0
+        ? "Approved financial assistance — full fee waiver"
+        : `Approved financial assistance — reduced fee to ${approvedAmount}`,
+    metadata: { approvedAmount, fullWaiver: approvedAmount === 0 },
+  });
+
   return { success: true };
 }
 
@@ -225,6 +247,15 @@ export async function rejectFinancialAssistance(
     }
   }
 
+  await logAudit({
+    actorId: auth.userId,
+    action: "enrollment.fa_rejected",
+    entityType: "enrollment",
+    entityId: enrollmentId,
+    summary: `Rejected financial assistance — ${reason.trim()}`,
+    metadata: { reason: reason.trim() },
+  });
+
   return { success: true };
 }
 
@@ -246,6 +277,15 @@ export async function removeEnrollment(
     console.error("Remove enrollment error:", error);
     return { success: false, error: error.message };
   }
+
+  await logAudit({
+    actorId: auth.userId,
+    action: "enrollment.removed",
+    entityType: "enrollment",
+    entityId: offeringId,
+    summary: "Removed a student from a course",
+    metadata: { studentId, offeringId },
+  });
 
   return { success: true };
 }
@@ -295,6 +335,15 @@ export async function deleteEnrollment(
       console.warn("Receipt storage cleanup failed:", storageError);
     }
   }
+
+  await logAudit({
+    actorId: auth.userId,
+    action: "enrollment.deleted",
+    entityType: "enrollment",
+    entityId: enrollmentId,
+    summary: "Deleted an enrollment record",
+    metadata: { enrollmentId },
+  });
 
   return { success: true };
 }

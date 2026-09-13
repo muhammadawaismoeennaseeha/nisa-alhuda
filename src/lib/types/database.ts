@@ -7,7 +7,7 @@
  * For now, we define them manually to match our migration.
  */
 
-export type UserRole = "admin" | "instructor" | "student" | "treasurer";
+export type UserRole = "admin" | "instructor" | "student" | "treasurer" | "ta";
 export type OfferingType = "program" | "course" | "workshop" | "class";
 export type FeeType = "one_time" | "monthly";
 export type OfferingMode = "online" | "onsite" | "hybrid";
@@ -51,6 +51,15 @@ export function profileHasRole(
   if (!profile) return false;
   if (profile.role === target) return true;
   return Array.isArray(profile.roles) && profile.roles.includes(target);
+}
+
+/** A TA ↔ course assignment row (migration 038). Scopes a TA to a course. */
+export interface CourseAssistant {
+  id: string;
+  offering_id: string;
+  assistant_id: string;
+  assigned_by: string | null;
+  created_at: string;
 }
 
 export interface Offering {

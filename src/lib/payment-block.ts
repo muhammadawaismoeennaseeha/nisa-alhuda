@@ -47,7 +47,7 @@ import type { Enrollment, Offering } from "@/lib/types/database";
 export const BLOCK_AFTER_DAYS = 10;
 
 /** Non-billable payment methods — sisters on these never owe a monthly fee. */
-const NON_BILLABLE_METHODS = new Set(["manual_approval", "waiver", "free"]);
+export const NON_BILLABLE_METHODS = new Set(["manual_approval", "waiver", "free"]);
 
 export interface BlockingEntry {
   enrollmentId: string;

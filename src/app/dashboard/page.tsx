@@ -30,6 +30,10 @@ export default async function DashboardPage() {
       redirect("/dashboard/admin/payments");
     case "instructor":
       redirect("/dashboard/instructor");
+    case "ta":
+      // Teaching Assistants live in the instructor area, narrowed to their
+      // assigned courses at the data layer.
+      redirect("/dashboard/instructor");
     default:
       redirect("/dashboard/student");
   }

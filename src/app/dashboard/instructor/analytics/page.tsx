@@ -16,7 +16,7 @@ import {
   Award,
 } from "lucide-react";
 
-import { getDashboardViewer } from "@/lib/auth-helpers";
+import { getDashboardViewer, applyTeachingScope } from "@/lib/auth-helpers";
 
 export default async function AnalyticsPage() {
   const supabase = await createClient();
@@ -27,9 +27,7 @@ export default async function AnalyticsPage() {
   let subjectsQuery = supabase
     .from("subjects")
     .select("id, title, offering_id");
-  if (viewer.instructorScope) {
-    subjectsQuery = subjectsQuery.eq("instructor_id", viewer.instructorScope);
-  }
+  subjectsQuery = applyTeachingScope(subjectsQuery, viewer);
   const { data: subjects } = await subjectsQuery;
 
   const subjectIds = subjects?.map((s) => s.id) || [];

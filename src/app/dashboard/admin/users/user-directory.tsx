@@ -60,10 +60,11 @@ const roleConfig: Record<
   admin: { label: "Admin", color: "text-purple-600", bg: "bg-purple-100 dark:bg-purple-950/30", icon: Shield },
   treasurer: { label: "Treasurer", color: "text-amber-600", bg: "bg-amber-100 dark:bg-amber-950/30", icon: Wallet },
   instructor: { label: "Instructor", color: "text-blue-600", bg: "bg-blue-100 dark:bg-blue-950/30", icon: BookOpen },
+  ta: { label: "Teaching Assistant", color: "text-teal-600", bg: "bg-teal-100 dark:bg-teal-950/30", icon: UserCog },
   student: { label: "Student", color: "text-green-600", bg: "bg-green-100 dark:bg-green-950/30", icon: User },
 };
 
-const ROLE_OPTIONS: UserRole[] = ["student", "instructor", "treasurer", "admin"];
+const ROLE_OPTIONS: UserRole[] = ["student", "instructor", "ta", "treasurer", "admin"];
 
 function uniqueRoles(profile: Profile): UserRole[] {
   const set = new Set<UserRole>(profile.roles || []);

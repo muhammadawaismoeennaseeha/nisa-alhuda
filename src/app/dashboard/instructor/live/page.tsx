@@ -26,7 +26,7 @@ import {
   ArrowRight,
 } from "lucide-react";
 import { RecordingUpdater } from "./recording-updater";
-import { getDashboardViewer } from "@/lib/auth-helpers";
+import { getDashboardViewer, applyTeachingScope } from "@/lib/auth-helpers";
 import type { Lesson } from "@/lib/types/database";
 
 export default async function LiveHubPage() {
@@ -38,9 +38,7 @@ export default async function LiveHubPage() {
   let subjectsQuery = supabase
     .from("subjects")
     .select("id, title, offering_id, instructor_id");
-  if (viewer.instructorScope) {
-    subjectsQuery = subjectsQuery.eq("instructor_id", viewer.instructorScope);
-  }
+  subjectsQuery = applyTeachingScope(subjectsQuery, viewer);
   const { data: subjects } = await subjectsQuery;
 
   if (!subjects || subjects.length === 0) {

@@ -21,6 +21,7 @@ import { SidebarNav, type NavSection } from "./sidebar-nav";
 import { StudentBottomNav } from "./student-bottom-nav";
 import { getBlockingDebt } from "@/lib/payment-block";
 import { LockedContent } from "./locked-content";
+import { roleLabel } from "@/lib/portal-roles";
 
 export default async function DashboardLayout({
   children,
@@ -109,8 +110,8 @@ export default async function DashboardLayout({
             </span>
             <div className="min-w-0 flex-1">
               <p className="truncate text-sm font-medium">{profile.full_name}</p>
-              <p className="text-[11px] capitalize text-muted-foreground">
-                {profile.role}
+              <p className="text-[11px] text-muted-foreground">
+                {roleLabel(profile.role)}
               </p>
             </div>
           </div>
@@ -169,6 +170,11 @@ function getNavSections(role: string): NavSection[] {
             iconName: "GraduationCap",
           },
           {
+            href: "/dashboard/admin/payments/overview",
+            label: "Overview",
+            iconName: "BarChart3",
+          },
+          {
             href: "/dashboard/admin/payments",
             label: "Payments",
             iconName: "ClipboardList",
@@ -179,9 +185,19 @@ function getNavSections(role: string): NavSection[] {
             iconName: "Table2",
           },
           {
+            href: "/dashboard/admin/payments/by-course",
+            label: "By Course",
+            iconName: "Users",
+          },
+          {
             href: "/dashboard/admin/users",
             label: "Users",
             iconName: "Users",
+          },
+          {
+            href: "/dashboard/admin/audit-log",
+            label: "Audit log",
+            iconName: "ScrollText",
           },
         ],
       },
@@ -213,6 +229,11 @@ function getNavSections(role: string): NavSection[] {
             href: "/dashboard/instructor/analytics",
             label: "Analytics",
             iconName: "BarChart3",
+          },
+          {
+            href: "/dashboard/admin/calendar",
+            label: "Calendar",
+            iconName: "CalendarDays",
           },
         ],
       },
@@ -256,6 +277,11 @@ function getNavSections(role: string): NavSection[] {
         label: "Finance",
         items: [
           {
+            href: "/dashboard/admin/payments/overview",
+            label: "Overview",
+            iconName: "BarChart3",
+          },
+          {
             href: "/dashboard/admin/payments",
             label: "Payments",
             iconName: "ClipboardList",
@@ -264,6 +290,11 @@ function getNavSections(role: string): NavSection[] {
             href: "/dashboard/admin/payments/grid",
             label: "Billing Grid",
             iconName: "Table2",
+          },
+          {
+            href: "/dashboard/admin/payments/by-course",
+            label: "By Course",
+            iconName: "Users",
           },
         ],
       },
@@ -326,6 +357,11 @@ function getNavSections(role: string): NavSection[] {
             label: "Analytics",
             iconName: "BarChart3",
           },
+          {
+            href: "/dashboard/admin/calendar",
+            label: "Calendar",
+            iconName: "CalendarDays",
+          },
         ],
       },
       {
@@ -345,6 +381,64 @@ function getNavSections(role: string): NavSection[] {
             href: "/dashboard/admin/credentials",
             label: "Credentials",
             iconName: "KeyRound",
+          },
+        ],
+      },
+      {
+        label: "Account",
+        items: [
+          {
+            href: "/dashboard/settings",
+            label: "Settings",
+            iconName: "Settings",
+          },
+        ],
+      },
+    ];
+  }
+
+  if (role === "ta") {
+    // Teaching Assistants are scoped instructors. They live in the instructor
+    // area (Subjects, Live Hub, Students, Analytics — all narrowed to their
+    // assigned courses by `applyTeachingScope`), plus the shared Announcements
+    // and their own Settings. Deliberately NO admin-area links: the admin
+    // layout doesn't admit a TA, and none of those screens (Courses,
+    // Enrollments, Payments, Users, Calendar) are theirs — so every link here
+    // is one a TA can actually open, and no financial surface appears at all.
+    return [
+      home,
+      {
+        label: "Teaching",
+        items: [
+          {
+            href: "/dashboard/instructor",
+            label: "Subjects",
+            iconName: "BookOpen",
+          },
+          {
+            href: "/dashboard/instructor/live",
+            label: "Live Hub",
+            iconName: "Video",
+          },
+          {
+            href: "/dashboard/instructor/students",
+            label: "Students",
+            iconName: "Users",
+          },
+          {
+            href: "/dashboard/instructor/analytics",
+            label: "Analytics",
+            iconName: "BarChart3",
+          },
+        ],
+      },
+      {
+        label: "Community",
+        items: [
+          {
+            href: "/dashboard/announcements",
+            label: "Announcements",
+            iconName: "Megaphone",
           },
         ],
       },
@@ -386,6 +480,16 @@ function getNavSections(role: string): NavSection[] {
           href: "/dashboard/student/enrollments",
           label: "Enrollments",
           iconName: "ClipboardList",
+        },
+        {
+          href: "/dashboard/student/transcript",
+          label: "Transcript",
+          iconName: "ScrollText",
+        },
+        {
+          href: "/dashboard/student/fees",
+          label: "My Fees",
+          iconName: "Wallet",
         },
       ],
     },

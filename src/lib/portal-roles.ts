@@ -31,7 +31,20 @@ export function isAdminOrInstructor(role: UserRole | null | undefined): boolean 
 export function shouldHideFinance(
   role: UserRole | null | undefined
 ): boolean {
-  return role === "instructor";
+  // Instructors and TAs are teaching staff; the spec hides all financial
+  // fields from both. Treasurers and admins are unaffected.
+  return role === "instructor" || role === "ta";
+}
+
+/**
+ * True when the viewer is teaching staff — a full instructor or a course-
+ * scoped Teaching Assistant. Both live in the instructor area; the TA is
+ * additionally narrowed to their assigned courses at the data layer.
+ */
+export function isTeachingStaff(
+  role: UserRole | null | undefined
+): boolean {
+  return role === "instructor" || role === "ta";
 }
 
 /**
@@ -42,4 +55,25 @@ export function canAccessBilling(
   role: UserRole | null | undefined
 ): boolean {
   return role === "admin" || role === "treasurer";
+}
+
+/**
+ * Human label for a role, for the sidebar/mobile user card. Most roles read
+ * fine when capitalised, but "ta" would render as "Ta"; spell it out instead.
+ */
+export function roleLabel(role: UserRole | null | undefined): string {
+  switch (role) {
+    case "ta":
+      return "Teaching Assistant";
+    case "admin":
+      return "Admin";
+    case "instructor":
+      return "Instructor";
+    case "treasurer":
+      return "Treasurer";
+    case "student":
+      return "Student";
+    default:
+      return role ?? "";
+  }
 }

@@ -11,12 +11,14 @@
  */
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/db/auth";
+import { logAudit } from "@/lib/db/audit";
 import { sendCredentialsEmail } from "@/lib/email";
 import type { UserRole } from "@/lib/types/database";
 
 const ALL_ROLES: readonly UserRole[] = [
   "student",
   "instructor",
+  "ta",
   "treasurer",
   "admin",
 ] as const;
@@ -81,6 +83,15 @@ export async function updateUserRoles(
     console.error("[updateUserRoles] DB error:", error);
     return { success: false, error: error.message };
   }
+
+  await logAudit({
+    actorId: auth.userId,
+    action: "user.roles_updated",
+    entityType: "profile",
+    entityId: targetUserId,
+    summary: `Set roles to ${uniqueRoles.join(", ")} (primary: ${primaryRole})`,
+    metadata: { primaryRole, roles: uniqueRoles },
+  });
 
   return { success: true };
 }
@@ -161,6 +172,15 @@ export async function resetUserPassword(
     return { success: false, error: emailResult.error };
   }
 
+  await logAudit({
+    actorId: auth.userId,
+    action: "user.password_reset_sent",
+    entityType: "profile",
+    entityId: targetUserId,
+    summary: `Sent a password-reset link to ${email}`,
+    metadata: { email },
+  });
+
   return { success: true, isInvite: false };
 }
 
@@ -222,6 +242,15 @@ export async function setUserPassword(
     .from("profiles")
     .update({ must_change_password: true })
     .eq("id", targetUserId);
+
+  await logAudit({
+    actorId: auth.userId,
+    action: "user.password_set",
+    entityType: "profile",
+    entityId: targetUserId,
+    summary: `Directly set a new password for ${authUser.user.email || "a user"}`,
+    metadata: { email: authUser.user.email || null },
+  });
 
   return { success: true, email: authUser.user.email || undefined };
 }

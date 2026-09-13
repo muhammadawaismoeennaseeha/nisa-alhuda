@@ -4,6 +4,7 @@
  */
 import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
+import Link from "next/link";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -16,8 +17,10 @@ import {
   Award,
   Sparkles,
   Clock,
+  ScrollText,
+  Wallet,
 } from "lucide-react";
-import { getDashboardViewer } from "@/lib/auth-helpers";
+import { getDashboardViewer, applyTeachingScope } from "@/lib/auth-helpers";
 import type { Profile } from "@/lib/types/database";
 
 /**
@@ -76,9 +79,7 @@ export default async function StudentManagementPage() {
   let subjectsQuery = supabase
     .from("subjects")
     .select("id, title, offering_id");
-  if (viewer.instructorScope) {
-    subjectsQuery = subjectsQuery.eq("instructor_id", viewer.instructorScope);
-  }
+  subjectsQuery = applyTeachingScope(subjectsQuery, viewer);
   const { data: subjects } = await subjectsQuery;
 
   if (!subjects || subjects.length === 0) {
@@ -388,6 +389,27 @@ export default async function StudentManagementPage() {
                           style={{ width: `${student.score}%` }}
                         />
                       </div>
+                      {/* Transcript (registrar) and Fees (financial) are not
+                          part of a Teaching Assistant's scope — hide the links
+                          so a TA is never sent to a page that turns them away. */}
+                      {viewer.role !== "ta" && (
+                        <>
+                          <Link
+                            href={`/dashboard/instructor/students/${student.id}/transcript`}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
+                          >
+                            <ScrollText className="h-3.5 w-3.5" />
+                            Transcript
+                          </Link>
+                          <Link
+                            href={`/dashboard/instructor/students/${student.id}/fees`}
+                            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
+                          >
+                            <Wallet className="h-3.5 w-3.5" />
+                            Fees
+                          </Link>
+                        </>
+                      )}
                     </div>
                   </div>
                 </CardContent>

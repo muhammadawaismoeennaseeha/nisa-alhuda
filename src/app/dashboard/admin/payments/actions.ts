@@ -26,6 +26,7 @@
  */
 import { createAdminClient } from "@/lib/supabase/admin";
 import { requireRole } from "@/lib/db/auth";
+import { logAudit } from "@/lib/db/audit";
 import { sendCredentialsEmail } from "@/lib/email";
 
 
@@ -269,6 +270,15 @@ export async function approveEnrollmentWithCredentials(
     };
   }
 
+  await logAudit({
+    actorId: auth.userId,
+    action: "enrollment.approved",
+    entityType: "enrollment",
+    entityId: enrollmentId,
+    summary: "Approved an enrollment and issued login credentials",
+    metadata: { enrollmentId },
+  });
+
   return provision;
 }
 
@@ -316,6 +326,15 @@ export async function rejectEnrollment(
     })
     .eq("id", enrollmentId);
   if (error) return { success: false, error: error.message };
+
+  await logAudit({
+    actorId: auth.userId,
+    action: "enrollment.rejected",
+    entityType: "enrollment",
+    entityId: enrollmentId,
+    summary: `Rejected an enrollment — ${reason.trim()}`,
+    metadata: { reason: reason.trim() },
+  });
 
   return { success: true };
 }
@@ -395,6 +414,16 @@ export async function approveMonthlyPaymentManually(args: {
       })
       .eq("id", args.monthlyPaymentId);
     if (updErr) return { success: false, error: updErr.message };
+
+    await logAudit({
+      actorId: auth.userId,
+      action: "monthly_payment.manual_approved",
+      entityType: "monthly_payment",
+      entityId: args.monthlyPaymentId,
+      summary: `Recorded an offline payment of ${args.amount} for a monthly cycle`,
+      metadata: { amount: args.amount, note: trimmedNote, path: "update" },
+    });
+
     return { success: true };
   }
 
@@ -466,6 +495,20 @@ export async function approveMonthlyPaymentManually(args: {
     reviewed_at: nowIso,
   });
   if (insErr) return { success: false, error: insErr.message };
+
+  await logAudit({
+    actorId: auth.userId,
+    action: "monthly_payment.manual_approved",
+    entityType: "monthly_payment",
+    entityId: enrollment.id,
+    summary: `Recorded an offline payment of ${args.amount} for the ${args.cycleMonth} cycle`,
+    metadata: {
+      amount: args.amount,
+      note: trimmedNote,
+      cycleMonth: args.cycleMonth,
+      path: "insert",
+    },
+  });
 
   return { success: true };
 }

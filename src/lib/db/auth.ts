@@ -10,6 +10,7 @@
  * Now there's one place. Change it once, it applies everywhere.
  */
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
 import type { UserRole } from "@/lib/types/database";
 
 export type AuthOk = { ok: true; userId: string; email: string | undefined };
@@ -62,4 +63,40 @@ export async function requireRole(
   }
 
   return { ok: true, userId: user.id, role: profile.role as UserRole };
+}
+
+
+/**
+ * Course-scope gate for teaching writes. Admins and full instructors are
+ * GLOBAL — they may act on any course, exactly as before (migration 028's
+ * shared-portal model). A Teaching Assistant is scoped: they may act only on
+ * offerings they are assigned to via `course_assistants` (migration 038).
+ *
+ * Returns `null` when the caller is authorized, or an AuthFail to return
+ * straight to the client when a TA reaches for a course they don't assist.
+ * `offeringId` may be null/undefined (e.g. the parent entity wasn't found);
+ * that is never authorized for a TA.
+ *
+ * Instructor/admin behaviour is untouched: they short-circuit to `null`
+ * without a database round-trip.
+ */
+export async function assertAssistsIfTA(
+  auth: RoleAuthOk,
+  offeringId: string | null | undefined
+): Promise<AuthFail | null> {
+  if (auth.role !== "ta") return null;
+  if (!offeringId) {
+    return { ok: false, error: "You can only manage courses you're assigned to." };
+  }
+  const admin = createAdminClient();
+  const { data } = await admin
+    .from("course_assistants")
+    .select("id")
+    .eq("offering_id", offeringId)
+    .eq("assistant_id", auth.userId)
+    .maybeSingle();
+  if (!data) {
+    return { ok: false, error: "You can only manage courses you're assigned to." };
+  }
+  return null;
 }

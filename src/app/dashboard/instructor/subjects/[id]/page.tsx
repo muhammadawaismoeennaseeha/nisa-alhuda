@@ -38,7 +38,8 @@ import {
   courseCard,
   iconTints,
 } from "@/components/course/course-surface";
-import { LessonList } from "./lesson-list";
+import { type ManagedQuiz } from "./quiz-manager";
+import { SubjectTabs, type GradebookData } from "./subject-tabs";
 import {
   hasRecurringSchedule,
   isLiveNow,
@@ -76,10 +77,15 @@ export default async function SubjectFolderPage({
 
   if (!subject) notFound();
 
-  // Hard scope: instructors can only enter their own subjects. Admins
-  // can enter any. RLS would reject writes anyway but this gives a clean
-  // 404 instead of a half-rendered page with empty actions.
-  if (!viewer.isAdmin && subject.instructor_id !== viewer.userId) {
+  // Hard scope: instructors enter their own subjects; a Teaching Assistant
+  // enters subjects on a course they're assigned to; admins enter any. RLS
+  // would reject writes anyway, but this gives a clean 404 instead of a
+  // half-rendered page with empty actions.
+  if (
+    !viewer.isAdmin &&
+    subject.instructor_id !== viewer.userId &&
+    !viewer.assistedOfferingIds.includes(subject.offering_id)
+  ) {
     notFound();
   }
 
@@ -104,6 +110,142 @@ export default async function SubjectFolderPage({
       .order("created_at", { ascending: false });
     resources = (resourcesData as Resource[]) || [];
   }
+
+  // ── Built-in quizzes on this subject (migration 034) ──
+  // Staff read every quiz incl. the answer key (RLS allows it); students
+  // never reach this query. attempt_count drives the "locked" state.
+  const { data: quizRows } = await supabase
+    .from("quizzes")
+    .select(
+      "id, title, instructions, is_published, quiz_questions(id, text, marks, sort_order, quiz_options(id, text, is_correct, sort_order))"
+    )
+    .eq("subject_id", id)
+    .order("created_at", { ascending: true });
+
+  const quizIds = (quizRows ?? []).map((q: { id: string }) => q.id);
+  const attemptCounts: Record<string, number> = {};
+  if (quizIds.length > 0) {
+    const { data: attemptRows } = await supabase
+      .from("quiz_attempts")
+      .select("quiz_id")
+      .in("quiz_id", quizIds);
+    for (const a of (attemptRows as { quiz_id: string }[]) ?? []) {
+      attemptCounts[a.quiz_id] = (attemptCounts[a.quiz_id] ?? 0) + 1;
+    }
+  }
+
+  type QuizRow = {
+    id: string;
+    title: string;
+    instructions: string | null;
+    is_published: boolean;
+    quiz_questions: {
+      id: string;
+      text: string;
+      marks: number;
+      sort_order: number;
+      quiz_options: { id: string; text: string; is_correct: boolean; sort_order: number }[];
+    }[];
+  };
+  const managedQuizzes: ManagedQuiz[] = ((quizRows as QuizRow[]) ?? []).map((q) => ({
+    id: q.id,
+    title: q.title,
+    instructions: q.instructions,
+    is_published: q.is_published,
+    attempt_count: attemptCounts[q.id] ?? 0,
+    questions: [...(q.quiz_questions ?? [])]
+      .sort((a, b) => a.sort_order - b.sort_order)
+      .map((qq) => ({
+        id: qq.id,
+        text: qq.text,
+        marks: Number(qq.marks),
+        options: [...(qq.quiz_options ?? [])]
+          .sort((a, b) => a.sort_order - b.sort_order)
+          .map((o) => ({ id: o.id, text: o.text, is_correct: o.is_correct })),
+      })),
+  }));
+
+  // ── Gradebook data (module 4) ──
+  // Rows = enrolled students; columns = published quizzes (read-only %) plus
+  // manual assessments (editable). Marks come from assessment_grades; quiz
+  // percentages come straight from quiz_attempts. Staff RLS permits all reads.
+  const gbQuizzes = managedQuizzes
+    .filter((q) => q.is_published)
+    .map((q) => ({ id: q.id, title: q.title }));
+
+  const { data: enrollRows } = await supabase
+    .from("enrollments")
+    .select("student:profiles!enrollments_student_id_fkey(id, full_name)")
+    .eq("offering_id", subject.offering_id)
+    .eq("status", "approved");
+  type EnrolledStudent = { id: string; full_name: string };
+  const gbStudents = ((enrollRows ?? []) as unknown as {
+    student: EnrolledStudent | EnrolledStudent[] | null;
+  }[])
+    .map((r) => (Array.isArray(r.student) ? r.student[0] ?? null : r.student))
+    .filter((st): st is EnrolledStudent => !!st)
+    .sort((a, b) => a.full_name.localeCompare(b.full_name));
+
+  const { data: assessmentRows } = await supabase
+    .from("assessments")
+    .select("id, title, type, max_marks")
+    .eq("subject_id", id)
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  const gbAssessments = ((assessmentRows ?? []) as {
+    id: string;
+    title: string;
+    type: string;
+    max_marks: number;
+  }[]).map((a) => ({
+    id: a.id,
+    title: a.title,
+    type: a.type as GradebookData["assessments"][number]["type"],
+    max_marks: Number(a.max_marks),
+  }));
+
+  const assessmentIds = gbAssessments.map((a) => a.id);
+  let gbGrades: GradebookData["grades"] = [];
+  if (assessmentIds.length > 0) {
+    const { data: gradeRows } = await supabase
+      .from("assessment_grades")
+      .select("assessment_id, student_id, marks")
+      .in("assessment_id", assessmentIds);
+    gbGrades = ((gradeRows ?? []) as {
+      assessment_id: string;
+      student_id: string;
+      marks: number;
+    }[]).map((g) => ({
+      assessment_id: g.assessment_id,
+      student_id: g.student_id,
+      marks: Number(g.marks),
+    }));
+  }
+
+  let gbQuizScores: GradebookData["quizScores"] = [];
+  if (quizIds.length > 0) {
+    const { data: scoreRows } = await supabase
+      .from("quiz_attempts")
+      .select("quiz_id, student_id, percentage")
+      .in("quiz_id", quizIds);
+    gbQuizScores = ((scoreRows ?? []) as {
+      quiz_id: string;
+      student_id: string;
+      percentage: number;
+    }[]).map((sc) => ({
+      quiz_id: sc.quiz_id,
+      student_id: sc.student_id,
+      percentage: Number(sc.percentage),
+    }));
+  }
+
+  const gradebookData: GradebookData = {
+    students: gbStudents,
+    assessments: gbAssessments,
+    quizzes: gbQuizzes,
+    grades: gbGrades,
+    quizScores: gbQuizScores,
+  };
 
   const offering = (
     subject as { offering?: { title?: string; status?: string } }
@@ -151,12 +293,16 @@ export default async function SubjectFolderPage({
         <QuizBanner quizUrl={(subject as Subject).quiz_url!} />
       )}
 
-      <LessonList
+      {/* Classes and the built-in quiz engine, as tabs — mirrors Naseeha's
+          course-page Quizzes tab so an authored quiz is never below the fold. */}
+      <SubjectTabs
         subjectId={id}
         offeringId={subject.offering_id}
         lessons={lessons}
         initialResources={resources}
         subjectRecurringMeetingUrl={(subject as Subject).recurring_meeting_url ?? null}
+        quizzes={managedQuizzes}
+        gradebook={gradebookData}
       />
     </div>
   );

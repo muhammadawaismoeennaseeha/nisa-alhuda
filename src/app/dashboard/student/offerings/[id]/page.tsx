@@ -29,6 +29,17 @@ import {
   courseCard,
 } from "@/components/course/course-surface";
 import { SubjectAccordion } from "./subject-accordion";
+import type { StudentQuiz } from "./quiz-runner";
+import {
+  subjectAveragePct,
+  marksToPct as gradePct,
+} from "@/lib/utils/grades";
+import {
+  StudentCourseTabs,
+  type SubjectQuizzes,
+  type StudentSubjectGrades,
+  type StudentGradeItem,
+} from "./student-course-tabs";
 import { MonthlyPaymentCard } from "./monthly-payment-card";
 import { monthlyAmountForEnrollment } from "@/lib/monthly-payments";
 import {
@@ -210,6 +221,150 @@ export default async function StudentLearningHubPage({
   );
 
   const typedSubjects = (subjects || []) as SubjectWithInstructor[];
+
+  // ── Built-in quizzes the student can take (published only; migration 034). ──
+  // The answer key is never fetched here; only titles, marks and this
+  // student's own attempt score.
+  const { data: quizRows } = await supabase
+    .from("quizzes")
+    .select("id, subject_id, title, quiz_questions(marks)")
+    .eq("offering_id", id)
+    .eq("is_published", true);
+
+  const publishedQuizIds = (quizRows ?? []).map((q: { id: string }) => q.id);
+  const attemptByQuiz: Record<
+    string,
+    { score: number; max_score: number; percentage: number }
+  > = {};
+  if (publishedQuizIds.length > 0) {
+    const { data: myAttempts } = await supabase
+      .from("quiz_attempts")
+      .select("quiz_id, score, max_score, percentage")
+      .eq("student_id", user.id)
+      .in("quiz_id", publishedQuizIds);
+    for (const a of (myAttempts as {
+      quiz_id: string;
+      score: number;
+      max_score: number;
+      percentage: number;
+    }[]) ?? []) {
+      attemptByQuiz[a.quiz_id] = {
+        score: Number(a.score),
+        max_score: Number(a.max_score),
+        percentage: Number(a.percentage),
+      };
+    }
+  }
+
+  const quizzesBySubject: Record<string, StudentQuiz[]> = {};
+  for (const q of (quizRows as {
+    id: string;
+    subject_id: string;
+    title: string;
+    quiz_questions: { marks: number }[];
+  }[]) ?? []) {
+    const qs = q.quiz_questions ?? [];
+    (quizzesBySubject[q.subject_id] ??= []).push({
+      id: q.id,
+      title: q.title,
+      question_count: qs.length,
+      total_marks: qs.reduce((sum, x) => sum + Number(x.marks), 0),
+      attempt: attemptByQuiz[q.id] ?? null,
+    });
+  }
+
+  // Quizzes grouped by subject for the student Quizzes tab — only subjects
+  // that actually have a published quiz appear. `typedSubjects` order is kept
+  // so the tab reads top-to-bottom like the Materials accordion.
+  const studentQuizGroups: SubjectQuizzes[] = typedSubjects
+    .map((s) => ({
+      subjectId: s.id,
+      subjectTitle: s.title,
+      quizzes: quizzesBySubject[s.id] ?? [],
+    }))
+    .filter((g) => g.quizzes.length > 0);
+
+
+  // ── Grades (module 4): this student's own record per subject. ──
+  // Blends quiz percentages (already loaded above) with manual assessment
+  // marks. RLS returns only THIS student's marks (assessment_grades) and the
+  // assessments on offerings they're enrolled in. Read-only.
+  const subjectIds = typedSubjects.map((s) => s.id);
+  const { data: gradeAssessmentRows } = await supabase
+    .from("assessments")
+    .select("id, subject_id, title, type, max_marks")
+    .in("subject_id", subjectIds.length > 0 ? subjectIds : ["00000000-0000-0000-0000-000000000000"])
+    .order("sort_order", { ascending: true })
+    .order("created_at", { ascending: true });
+  const assessmentsBySubject: Record<string, {
+    id: string;
+    title: string;
+    type: string;
+    max_marks: number;
+  }[]> = {};
+  const gradeAssessmentIds: string[] = [];
+  for (const a of (gradeAssessmentRows ?? []) as {
+    id: string;
+    subject_id: string;
+    title: string;
+    type: string;
+    max_marks: number;
+  }[]) {
+    gradeAssessmentIds.push(a.id);
+    (assessmentsBySubject[a.subject_id] ??= []).push({
+      id: a.id,
+      title: a.title,
+      type: a.type,
+      max_marks: Number(a.max_marks),
+    });
+  }
+  const myMarkByAssessment: Record<string, number> = {};
+  if (gradeAssessmentIds.length > 0) {
+    const { data: myMarkRows } = await supabase
+      .from("assessment_grades")
+      .select("assessment_id, marks")
+      .eq("student_id", user.id)
+      .in("assessment_id", gradeAssessmentIds);
+    for (const g of (myMarkRows ?? []) as { assessment_id: string; marks: number }[]) {
+      myMarkByAssessment[g.assessment_id] = Number(g.marks);
+    }
+  }
+
+  const gradeGroups: StudentSubjectGrades[] = typedSubjects
+    .map((s) => {
+      const items: StudentGradeItem[] = [];
+      for (const q of quizzesBySubject[s.id] ?? []) {
+        items.push({
+          kind: "quiz",
+          label: q.title,
+          typeLabel: "Quiz",
+          percentage: q.attempt ? q.attempt.percentage : null,
+          detail: q.attempt
+            ? `${q.attempt.score}/${q.attempt.max_score}`
+            : "Not attempted",
+        });
+      }
+      for (const a of assessmentsBySubject[s.id] ?? []) {
+        const marks = myMarkByAssessment[a.id];
+        const has = marks !== undefined;
+        items.push({
+          kind: "assessment",
+          label: a.title,
+          typeLabel:
+            a.type.charAt(0).toUpperCase() + a.type.slice(1),
+          percentage: has ? gradePct(marks, a.max_marks) : null,
+          detail: has ? `${marks}/${a.max_marks}` : "Not marked",
+        });
+      }
+      return {
+        subjectId: s.id,
+        subjectTitle: s.title,
+        items,
+        total: subjectAveragePct(items.map((i) => i.percentage)),
+      };
+    })
+    .filter((g) => g.items.length > 0);
+
 
   // ── Header + metric derivations (all read-only) ──
 
@@ -410,13 +565,18 @@ export default async function StudentLearningHubPage({
             </p>
           </div>
         ) : (
-          <SubjectAccordion
-            subjects={typedSubjects}
-            lessonsBySubject={classLessonsBySubject}
-            resourcesBySubject={resourcesBySubject}
-            completedLessonIds={completedLessonIds}
-            offeringId={id}
-          />
+          <StudentCourseTabs quizGroups={studentQuizGroups} gradeGroups={gradeGroups}>
+            <SubjectAccordion
+              subjects={typedSubjects}
+              lessonsBySubject={classLessonsBySubject}
+              resourcesBySubject={resourcesBySubject}
+              completedLessonIds={completedLessonIds}
+              offeringId={id}
+              // Quizzes now live in the Quizzes tab, not inline in the
+              // accordion — pass an empty map so they are not shown twice.
+              quizzesBySubject={{}}
+            />
+          </StudentCourseTabs>
         )}
       </div>
     </div>

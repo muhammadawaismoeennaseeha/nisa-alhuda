@@ -69,6 +69,7 @@ import type { Lesson, Offering } from "@/lib/types/database";
 import { OfferingForm } from "../../offering-form";
 import { EnrollDialog } from "../students/enroll-dialog";
 import { CourseHeaderActions } from "./course-header-actions";
+import { TeachingAssistants, type TAPerson } from "./teaching-assistants";
 import type { TabKey } from "./tabs";
 
 const TABS: readonly CourseTab<TabKey>[] = [
@@ -154,6 +155,9 @@ export function CourseWorkspace({
   resourceCounts = {},
   instructors = [],
   hideFinance = false,
+  isAdmin = false,
+  assistants = [],
+  taCandidates = [],
   initialTab = "overview",
 }: {
   offering: Offering;
@@ -169,6 +173,12 @@ export function CourseWorkspace({
   instructors?: InstructorOption[];
   /** Passed straight through to the Details form — hides price and fee type. */
   hideFinance?: boolean;
+  /** Admin-only surfaces (TA assignment). Instructors reach this page too. */
+  isAdmin?: boolean;
+  /** Teaching Assistants currently assigned to this course. */
+  assistants?: TAPerson[];
+  /** TA-role users an admin can still add here. */
+  taCandidates?: TAPerson[];
   /** Seeded from `?tab=`; the retired edit/students routes redirect into it. */
   initialTab?: TabKey;
 }) {
@@ -313,23 +323,34 @@ export function CourseWorkspace({
       )}
 
       {active === "people" && (
-        <CourseRoster
-          rows={roster}
-          intakeDetails
-          addAction={
-            <EnrollDialog
+        <div className="space-y-4">
+          <CourseRoster
+            rows={roster}
+            intakeDetails
+            addAction={
+              <EnrollDialog
+                offeringId={offering.id}
+                offeringTitle={offering.title}
+                triggerClassName={cn(courseButtonPrimary, "cursor-pointer")}
+                triggerLabel={
+                  <>
+                    <UserPlus className="h-4 w-4" />
+                    Add people
+                  </>
+                }
+              />
+            }
+          />
+          {/* TA assignment is an administrative act; instructors view this page
+              too, so the panel is admin-only. */}
+          {isAdmin && (
+            <TeachingAssistants
               offeringId={offering.id}
-              offeringTitle={offering.title}
-              triggerClassName={cn(courseButtonPrimary, "cursor-pointer")}
-              triggerLabel={
-                <>
-                  <UserPlus className="h-4 w-4" />
-                  Add people
-                </>
-              }
+              assistants={assistants}
+              candidates={taCandidates}
             />
-          }
-        />
+          )}
+        </div>
       )}
 
       {active === "structure" && (

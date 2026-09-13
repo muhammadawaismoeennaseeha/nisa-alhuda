@@ -17,7 +17,7 @@ import {
 import { DashboardGreeting } from "@/components/dashboard/greeting";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { getDashboardViewer } from "@/lib/auth-helpers";
+import { getDashboardViewer, applyTeachingScope } from "@/lib/auth-helpers";
 
 export default async function InstructorDashboardPage() {
   const supabase = await createClient();
@@ -32,9 +32,7 @@ export default async function InstructorDashboardPage() {
     .select("*, offering:offerings(id, title, slug, status, type), instructor:profiles!subjects_instructor_id_fkey(id, full_name)")
     .order("sort_order", { ascending: true });
 
-  if (viewer.instructorScope) {
-    subjectsQuery = subjectsQuery.eq("instructor_id", viewer.instructorScope);
-  }
+  subjectsQuery = applyTeachingScope(subjectsQuery, viewer);
 
   const { data: subjects, error } = await subjectsQuery;
 

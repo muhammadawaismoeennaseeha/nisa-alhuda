@@ -133,6 +133,7 @@ function renderAccordion(completed: string[] = ["les-zoom-done"]) {
       subjects={[SUBJECT]}
       lessonsBySubject={{ "sub-1": LESSONS }}
       resourcesBySubject={{}}
+      quizzesBySubject={{}}
       completedLessonIds={completed}
       offeringId="off-1"
     />
@@ -252,6 +253,7 @@ describe("SubjectAccordion — subject-level actions", () => {
         resourcesBySubject={{}}
         completedLessonIds={[]}
         offeringId="off-1"
+        quizzesBySubject={{}}
       />
     );
 

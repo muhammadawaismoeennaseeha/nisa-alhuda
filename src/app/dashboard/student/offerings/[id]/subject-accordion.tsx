@@ -67,12 +67,15 @@ import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Subject, Lesson, Resource } from "@/lib/types/database";
 
+import { QuizRunner, type StudentQuiz } from "./quiz-runner";
+
 interface SubjectAccordionProps {
   subjects: (Subject & { instructor: { full_name: string } | null })[];
   lessonsBySubject: Record<string, Lesson[]>;
   resourcesBySubject: Record<string, Resource[]>;
   completedLessonIds: string[];
   offeringId: string;
+  quizzesBySubject: Record<string, StudentQuiz[]>;
 }
 
 /** The hairline that separates rows inside a course card. */
@@ -111,6 +114,7 @@ export function SubjectAccordion({
   resourcesBySubject,
   completedLessonIds,
   offeringId,
+  quizzesBySubject,
 }: SubjectAccordionProps) {
   const router = useRouter();
   // Local state for optimistic updates
@@ -212,6 +216,7 @@ export function SubjectAccordion({
       {subjects.map((subject, subjectIndex) => {
         const lessons = lessonsBySubject[subject.id] || [];
         const resources = resourcesBySubject[subject.id] ?? [];
+        const quizzes = quizzesBySubject[subject.id] ?? [];
         const isOpen = openSubjects.has(subject.id);
         const progress = getSubjectProgress(subject.id);
 
@@ -229,6 +234,7 @@ export function SubjectAccordion({
           !!subject.description ||
           hasRecurringSchedule(subject) ||
           !!subject.quiz_url ||
+          quizzes.length > 0 ||
           resources.length > 0;
 
         return (
@@ -319,6 +325,9 @@ export function SubjectAccordion({
                         when admin has set an external quiz URL on the subject
                         (typically a Google Form). */}
                     {subject.quiz_url && <QuizCard quizUrl={subject.quiz_url} />}
+
+                    {/* Built-in quizzes — auto-graded, taken in place. */}
+                    {quizzes.length > 0 && <QuizRunner quizzes={quizzes} />}
 
                     {/* Resources block — the subject's downloadable files. */}
                     {resources.length > 0 && (

@@ -420,3 +420,40 @@
     background: rgba(197, 91, 122, 0.35);
   }
 }
+
+/* Module 5 — printable transcript. Scoped via :has() so ONLY a page that
+   actually renders the transcript sheet collapses to a clean page; every
+   other dashboard page still prints normally. */
+@media print {
+  body:has(#transcript-sheet) * {
+    visibility: hidden;
+  }
+  body:has(#transcript-sheet) #transcript-sheet,
+  body:has(#transcript-sheet) #transcript-sheet * {
+    visibility: visible;
+  }
+  body:has(#transcript-sheet) #transcript-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}
+
+/* Module 6 — printable fee statement. Same :has() scoping as the transcript:
+   only a page that renders the fee sheet collapses to a clean page. */
+@media print {
+  body:has(#fee-statement-sheet) * {
+    visibility: hidden;
+  }
+  body:has(#fee-statement-sheet) #fee-statement-sheet,
+  body:has(#fee-statement-sheet) #fee-statement-sheet * {
+    visibility: visible;
+  }
+  body:has(#fee-statement-sheet) #fee-statement-sheet {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+  }
+}

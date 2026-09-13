@@ -26,9 +26,12 @@ import {
   KeyRound,
   Table2,
   CalendarDays,
+  Wallet,
 } from "lucide-react";
 import { Logo } from "@/components/layout/logo";
 import { createClient } from "@/lib/supabase/client";
+import { roleLabel } from "@/lib/portal-roles";
+import type { UserRole } from "@/lib/types/database";
 
 // Map icon names to components
 const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
@@ -46,6 +49,7 @@ const iconMap: Record<string, React.ComponentType<{ className?: string }>> = {
   KeyRound,
   Table2,
   CalendarDays,
+  Wallet,
 };
 
 interface SerializedNavItem {
@@ -146,7 +150,7 @@ export function MobileNav({ navItems, fullName, role }: MobileNavProps) {
         <div className="shrink-0 p-4 border-t bg-white">
           <div className="mb-3 px-1">
             <p className="text-sm font-medium truncate">{fullName}</p>
-            <p className="text-xs text-muted-foreground capitalize">{role}</p>
+            <p className="text-xs text-muted-foreground">{roleLabel(role as UserRole)}</p>
           </div>
           <button
             onClick={handleLogout}

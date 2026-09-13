@@ -70,6 +70,8 @@ export default async function OfferingWorkspacePage({
     pendingRes,
     instructorsRes,
     profileRes,
+    assistantsRes,
+    taCandidatesRes,
   ] = await Promise.all([
     supabase
       .from("subjects")
@@ -103,6 +105,21 @@ export default async function OfferingWorkspacePage({
     user
       ? supabase.from("profiles").select("role").eq("id", user.id).single()
       : Promise.resolve({ data: null }),
+    // Current Teaching Assistants on this course (Module 7). Join to profiles
+    // for the display name; the row itself only carries ids.
+    supabase
+      .from("course_assistants")
+      .select(
+        "assistant_id, assistant:profiles!course_assistants_assistant_id_fkey(id, full_name)"
+      )
+      .eq("offering_id", id),
+    // Everyone who holds the `ta` role -- primary slot or the roles[] array
+    // -- as candidates for the assignment picker.
+    supabase
+      .from("profiles")
+      .select("id, full_name")
+      .or("role.eq.ta,roles.cs.{ta}")
+      .order("full_name"),
   ]);
 
   const subjects = (subjectsRes.data || []) as SubjectWithInstructor[];
@@ -114,6 +131,22 @@ export default async function OfferingWorkspacePage({
   }[];
   const hideFinance =
     (profileRes.data as { role?: string } | null)?.role === "instructor";
+  const isAdmin =
+    (profileRes.data as { role?: string } | null)?.role === "admin";
+
+  // Teaching Assistants already on this course, and the candidates an admin
+  // can still add (all TAs minus those already assigned).
+  const assistants = (
+    (assistantsRes.data || []) as unknown as {
+      assistant: { id: string; full_name: string | null } | null;
+    }[]
+  )
+    .map((r) => r.assistant)
+    .filter((p): p is { id: string; full_name: string | null } => p !== null);
+  const assignedIds = new Set(assistants.map((p) => p.id));
+  const taCandidates = (
+    (taCandidatesRes.data || []) as { id: string; full_name: string | null }[]
+  ).filter((p) => !assignedIds.has(p.id));
 
   // Resource counts need the lesson ids, so this one can't join the batch
   // above. `head: true` per lesson would be N round-trips; one `in` query and
@@ -143,6 +176,9 @@ export default async function OfferingWorkspacePage({
       resourceCounts={resourceCounts}
       instructors={instructors}
       hideFinance={hideFinance}
+      isAdmin={isAdmin}
+      assistants={assistants}
+      taCandidates={taCandidates}
       initialTab={isTabKey(tab) ? tab : "overview"}
     />
   );

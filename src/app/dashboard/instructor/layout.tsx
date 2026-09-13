@@ -3,6 +3,7 @@
  */
 import { createClient } from "@/lib/supabase/server";
 import { redirect } from "next/navigation";
+import { isTeachingStaff } from "@/lib/portal-roles";
 
 export default async function InstructorLayout({
   children,
@@ -23,7 +24,11 @@ export default async function InstructorLayout({
     .eq("id", user.id)
     .single();
 
-  if (profile?.role !== "instructor" && profile?.role !== "admin") {
+  // Instructors, admins, and Teaching Assistants share this area. A TA is
+  // scoped to their assigned courses at the data layer (see applyTeachingScope
+  // and the course-scoped server-action gates); the layout only decides who
+  // may enter the door.
+  if (profile?.role !== "admin" && !isTeachingStaff(profile?.role)) {
     redirect("/dashboard");
   }
 
