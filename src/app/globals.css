@@ -68,6 +68,23 @@
   --color-blush: #FAEDE6;
   --color-plum-dark: #3A2835;
   --color-plum-muted: #8B6B7B;
+
+  /* Course-workspace surfaces — from the signed-off courses mockup.
+     `border` (#F0D4CC) is the interactive edge (inputs, buttons); cards sit on
+     `border-soft`, a paler rose that reads as a hairline rather than an
+     outline. `plum-body` is the paragraph ink: softer than --foreground so a
+     description doesn't compete with the title above it. */
+  --color-border-soft: #F3E7E1;
+  --color-plum-body: #6B5560;
+  --color-sage-50: #EAF3EC;
+  --color-sage-200: #CDE6D4;
+  --color-sage-700: #4E7C5E;
+  --color-sand-50: #FBF1E0;
+  --color-sand-700: #A9772F;
+  --color-steel-50: #EAF0F6;
+  --color-steel-700: #3D5E80;
+  --shadow-soft-rose: 0 8px 30px rgba(197, 91, 122, 0.07);
+  --shadow-soft-rose-lg: 0 14px 40px rgba(197, 91, 122, 0.12);
 }
 
 /*
