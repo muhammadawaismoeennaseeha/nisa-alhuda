@@ -1,41 +1,63 @@
 /**
- * Upgraded offering card — server component (no client JS until hover).
+ * Public offering card — server component (no client JS until hover).
  *
- * Visual upgrade over the previous card:
- *   - Rotating conic-gradient border beam on hover (via .border-beam util)
- *   - Mode chip inside a subtle outline pill
- *   - Price + CTA in a footer strip separated by a hairline
- *   - "New" ribbon corner mark when is_new
- *   - Overflow-safe title (line-clamp-2) so grid stays even
+ * Re-skinned onto the shared course vocabulary in `@/components/course` so the
+ * catalogue, the offering page and the course workspace all read as one
+ * product: `courseCard`'s white-on-cream shell with a rose hairline and soft
+ * rose shadow, `courseCardHover`'s lift, the 38px tinted icon square from
+ * `NavCard`, course pills, and a `courseButtonPrimary` CTA.
+ *
+ * The marketing polish that survives the re-skin, deliberately: the floral
+ * `Sprig` corner mark that fades in on hover, the "New" badge, and the
+ * short-description/price/CTA density a catalogue needs and a workspace
+ * doesn't. What went is the rotating conic `border-beam` — it fought the rose
+ * hairline `courseCardHover` paints, and only one of them can own the edge.
  *
  * Used in both the landing preview grid and the /catalog page.
  */
 import Link from "next/link";
 import {
   ArrowUpRight,
+  BookOpen,
   Calendar,
+  GraduationCap,
   MapPin,
+  Presentation,
   Sparkles,
+  Users,
   Wifi,
 } from "lucide-react";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import {
+  badgeBase,
+  courseButtonPrimary,
+  courseCard,
+  courseCardHover,
+  courseTag,
+  iconTints,
+  pillBase,
+  pillTones,
+} from "@/components/course/course-surface";
 import { Sprig } from "./florals";
 import { formatPriceWithFee } from "@/lib/constants";
-import type { Offering } from "@/lib/types/database";
+import type { Offering, OfferingType } from "@/lib/types/database";
+
+const TYPE_META: Record<
+  OfferingType,
+  { label: string; icon: React.ElementType }
+> = {
+  program: { label: "Program", icon: GraduationCap },
+  course: { label: "Course", icon: BookOpen },
+  workshop: { label: "Workshop", icon: Presentation },
+  class: { label: "Class", icon: Users },
+};
 
 interface OfferingCardProps {
   offering: Offering;
 }
 
 export function OfferingCard({ offering }: OfferingCardProps) {
-  const typeLabel =
-    offering.type === "program"
-      ? "Program"
-      : offering.type === "course"
-      ? "Course"
-      : offering.type === "workshop"
-      ? "Workshop"
-      : "Class";
+  const { label: typeLabel, icon: TypeIcon } = TYPE_META[offering.type];
 
   const ModeIcon = offering.mode === "onsite" ? MapPin : Wifi;
   const modeLabel =
@@ -48,48 +70,66 @@ export function OfferingCard({ offering }: OfferingCardProps) {
   return (
     <Link
       href={`/offerings/${offering.slug}`}
-      className="border-beam group relative flex flex-col overflow-hidden rounded-2xl border border-border/80 bg-card/80 p-5 backdrop-blur-sm transition-all duration-300 hover:-translate-y-1 hover:shadow-xl hover:shadow-primary/10"
+      className={cn(
+        courseCard,
+        courseCardHover,
+        "group relative flex flex-col overflow-hidden p-[18px]"
+      )}
     >
       {/* Floral corner mark — fades in on hover so cards stay calm at rest */}
       <Sprig
         size={44}
-        className="pointer-events-none absolute -right-2 -top-2 opacity-0 transition-opacity duration-300 group-hover:opacity-70"
+        className="pointer-events-none absolute -top-2 -right-2 opacity-0 transition-opacity duration-300 group-hover:opacity-70"
       />
 
-      {/* "New" ribbon */}
-      {offering.is_new && (
-        <div className="absolute right-3 top-3 flex items-center gap-1 rounded-full bg-gradient-to-br from-amber-400 to-amber-500 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-white shadow-sm">
-          <Sparkles className="h-2.5 w-2.5" />
-          New
+      {/* Icon square opposite the "New" badge — the NavCard top row */}
+      <div className="flex items-start justify-between gap-2">
+        <div
+          className={cn(
+            "flex h-[38px] w-[38px] items-center justify-center rounded-[10px]",
+            iconTints.brand
+          )}
+        >
+          <TypeIcon className="h-[18px] w-[18px]" />
         </div>
-      )}
+        {offering.is_new && (
+          <span
+            className={cn(
+              badgeBase,
+              pillTones.warning,
+              "inline-flex items-center gap-1"
+            )}
+          >
+            <Sparkles className="h-2.5 w-2.5" />
+            New
+          </span>
+        )}
+      </div>
 
       {/* Meta chips */}
-      <div className="flex flex-wrap items-center gap-1.5">
-        <Badge variant="secondary" className="text-[11px] font-medium">
-          {typeLabel}
-        </Badge>
-        <span className="inline-flex items-center gap-1 rounded-full border border-border/60 px-2 py-0.5 text-[10px] text-muted-foreground">
+      <div className="mt-3.5 flex flex-wrap items-center gap-1.5">
+        <span className={cn(pillBase, pillTones.brand)}>{typeLabel}</span>
+        <span className={cn(courseTag, "inline-flex items-center gap-1")}>
           <ModeIcon className="h-2.5 w-2.5" />
           {modeLabel}
         </span>
       </div>
 
       {/* Title */}
-      <h3 className="font-heading mt-3 line-clamp-2 text-base font-semibold leading-snug transition-colors group-hover:text-primary">
+      <h3 className="font-heading mt-2.5 line-clamp-2 text-[15px] leading-snug font-semibold tracking-[-0.01em] transition-colors group-hover:text-rose-700 dark:group-hover:text-rose-300">
         {offering.title}
       </h3>
 
       {/* Description */}
       {offering.short_description && (
-        <p className="mt-1.5 line-clamp-2 text-xs leading-relaxed text-muted-foreground">
+        <p className="mt-1.5 line-clamp-2 text-[13px] leading-relaxed text-plum-body dark:text-muted-foreground">
           {offering.short_description}
         </p>
       )}
 
       {/* Start date */}
       {offering.schedule_start && (
-        <span className="mt-3 inline-flex items-center gap-1 text-[11px] text-muted-foreground">
+        <span className="mt-3 inline-flex items-center gap-1 text-xs text-muted-foreground">
           <Calendar className="h-3 w-3" />
           Starts{" "}
           {new Date(offering.schedule_start).toLocaleDateString("en-PK", {
@@ -100,14 +140,21 @@ export function OfferingCard({ offering }: OfferingCardProps) {
         </span>
       )}
 
-      {/* Footer: price + arrow */}
-      <div className="mt-auto flex items-center justify-between border-t border-border/50 pt-3">
-        <span className="font-heading text-sm font-bold text-primary">
+      {/* Footer: price + CTA. The wrapper keeps a floor of 16px above the
+          hairline on the tallest card in a row, where `mt-auto` collapses. */}
+      <div className="mt-auto pt-4" />
+      <div className="flex items-center justify-between gap-3 border-t border-border-soft pt-3.5 dark:border-border">
+        <span className="font-heading text-[15px] font-bold text-rose-600 dark:text-rose-300">
           {formatPriceWithFee(offering.price, offering.fee_type)}
         </span>
-        <span className="flex items-center gap-1 text-[11px] font-medium text-muted-foreground transition-colors group-hover:text-primary">
+        <span
+          className={cn(
+            courseButtonPrimary,
+            "group-hover:border-rose-700 group-hover:bg-rose-700"
+          )}
+        >
           View details
-          <ArrowUpRight className="h-3 w-3 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
+          <ArrowUpRight className="h-3.5 w-3.5 transition-transform group-hover:-translate-y-0.5 group-hover:translate-x-0.5" />
         </span>
       </div>
     </Link>

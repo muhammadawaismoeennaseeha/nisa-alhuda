@@ -1,18 +1,29 @@
 /**
  * Public catalog page — lists offerings with Active / Archived tabs.
  *
- * Layout upgrade:
+ * Layout:
  *   - Hero banner with aurora backdrop (matches landing style)
- *   - Sticky tab pill group with animated indicator
- *   - Bigger empty state with a CTA back home
- *   - Uses the unified OfferingCard with border-beam hover
+ *   - Tab pill group
+ *   - Empty state built on the course card surface, with a CTA
+ *   - Uses the unified OfferingCard
+ *
+ * The marketing hero (aurora, drifting blossoms, floral divider) stays; the
+ * cards and the empty state below it speak the shared course vocabulary from
+ * `@/components/course`, so the eye carries one surface language from here
+ * through the offering page and into the enrolled student's hub.
  */
 import type { Metadata } from "next";
 import Link from "next/link";
 import { Archive, BookOpen, Sparkles } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { cn } from "@/lib/utils";
 import { OfferingCard } from "@/components/landing/offering-card";
 import { FloatingBlossoms, FloralDivider } from "@/components/landing/florals";
+import {
+  courseButtonPrimary,
+  courseCard,
+  iconTints,
+} from "@/components/course/course-surface";
 import type { Offering } from "@/lib/types/database";
 
 export const metadata: Metadata = {
@@ -48,39 +59,41 @@ export default async function CatalogPage({
         <FloatingBlossoms className="-z-10" />
 
         <div className="container relative mx-auto px-4 text-center">
-          <div className="inline-flex items-center gap-2 rounded-full border border-primary/20 bg-white/60 px-4 py-1.5 text-xs font-medium text-primary backdrop-blur-md dark:bg-card/60">
+          <div className="inline-flex items-center gap-2 rounded-full border border-rose-200 bg-white/70 px-4 py-1.5 text-xs font-semibold text-rose-700 backdrop-blur-md dark:border-rose-800 dark:bg-card/60 dark:text-rose-200">
             <Sparkles className="h-3.5 w-3.5" />
             Current catalog
           </div>
-          <h1 className="font-heading mt-6 text-balance text-4xl font-bold tracking-tight sm:text-5xl md:text-6xl">
+          <h1 className="font-heading mt-6 text-4xl leading-[1.1] font-bold tracking-[-0.01em] text-balance sm:text-5xl md:text-6xl">
             Find your path of knowledge
           </h1>
-          <p className="mx-auto mt-5 max-w-2xl text-muted-foreground">
+          <p className="mx-auto mt-5 max-w-2xl text-plum-body dark:text-muted-foreground">
             Browse our programs, courses, and workshops. Every offering is led
             by qualified female instructors and includes lifetime access to
             recordings.
           </p>
 
-          {/* Tabs — animated pill group */}
-          <div className="mt-10 inline-flex rounded-full border border-border/60 bg-background/70 p-1 backdrop-blur-md">
+          {/* Tabs — pill group on the course surface's rose */}
+          <div className="mt-10 inline-flex rounded-full border border-border-soft bg-card/80 p-1 shadow-soft-rose backdrop-blur-md dark:border-border dark:shadow-none">
             <Link
               href="/catalog"
-              className={`inline-flex h-9 items-center rounded-full px-5 text-sm font-medium transition-all ${
+              className={cn(
+                "inline-flex h-9 items-center rounded-full px-5 text-[13px] font-semibold transition-colors",
                 !isArchived
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+                  ? "bg-rose-500 text-white"
+                  : "text-muted-foreground hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-200"
+              )}
             >
               <BookOpen className="mr-1.5 h-3.5 w-3.5" />
               Active
             </Link>
             <Link
               href="/catalog?tab=archived"
-              className={`inline-flex h-9 items-center rounded-full px-5 text-sm font-medium transition-all ${
+              className={cn(
+                "inline-flex h-9 items-center rounded-full px-5 text-[13px] font-semibold transition-colors",
                 isArchived
-                  ? "bg-primary text-primary-foreground shadow-sm"
-                  : "text-muted-foreground hover:text-foreground"
-              }`}
+                  ? "bg-rose-500 text-white"
+                  : "text-muted-foreground hover:bg-rose-50 hover:text-rose-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-200"
+              )}
             >
               <Archive className="mr-1.5 h-3.5 w-3.5" />
               Archived
@@ -95,16 +108,26 @@ export default async function CatalogPage({
       <section className="pb-20 pt-4">
         <div className="container mx-auto px-4">
           {list.length === 0 ? (
-            <div className="mx-auto max-w-md rounded-3xl border border-border/60 bg-card/60 px-6 py-16 text-center backdrop-blur-sm">
-              <div className="mx-auto flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                <BookOpen className="h-6 w-6" />
+            <div
+              className={cn(
+                courseCard,
+                "mx-auto flex max-w-md flex-col items-center px-6 py-14 text-center"
+              )}
+            >
+              <div
+                className={cn(
+                  "flex h-[38px] w-[38px] items-center justify-center rounded-[10px]",
+                  iconTints.brand
+                )}
+              >
+                <BookOpen className="h-[18px] w-[18px]" />
               </div>
-              <h2 className="font-heading mt-5 text-lg font-semibold">
+              <h2 className="font-heading mt-3.5 text-[15px] font-semibold">
                 {isArchived
                   ? "Nothing archived yet"
                   : "New programs coming soon"}
               </h2>
-              <p className="mt-2 text-sm text-muted-foreground">
+              <p className="mt-1 text-sm text-muted-foreground">
                 {isArchived
                   ? "Past cohorts will appear here once they close."
                   : "Check back soon, or create a free account to be notified when enrollment opens."}
@@ -112,7 +135,7 @@ export default async function CatalogPage({
               {!isArchived && (
                 <Link
                   href="/register"
-                  className="mt-6 inline-flex h-10 items-center rounded-full bg-primary px-5 text-sm font-medium text-primary-foreground shadow-sm transition-transform hover:scale-[1.02]"
+                  className={cn(courseButtonPrimary, "press mt-5")}
                 >
                   Create free account
                 </Link>

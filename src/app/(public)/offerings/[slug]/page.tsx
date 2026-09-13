@@ -1,13 +1,24 @@
 /**
- * Offering detail — revamped.
+ * Offering detail — the public page between the catalogue and the enrol wizard.
  *
  * Layout:
  *   - Full-width hero banner with aurora backdrop, type chips, title, subhead
- *   - Two-column body: "About" + subjects/instructor on left, sticky glass
- *     enrollment card on right (floats to top on mobile)
- *   - Subject cards carry a subtle gradient + instructor chip
+ *   - Two-column body: "About" + subjects/instructor on left, sticky
+ *     enrolment card on right (floats to top on mobile)
  *
- * Data fetching is unchanged from the previous version.
+ * Re-skinned onto the shared course vocabulary in `@/components/course`: every
+ * body panel and the enrolment card are `courseCard` (white on cream, rose
+ * hairline, soft rose shadow, `--radius` corners), the hero chips are the same
+ * `badgeBase`/`pillTones` the course header uses, and the CTA is
+ * `courseButtonPrimary`. A visitor who enrols lands on a student hub built from
+ * the same parts.
+ *
+ * Kept from the marketing version, deliberately: the full-bleed aurora hero
+ * with drifting blossoms, the display-scale title, the kufic-patterned
+ * thumbnail, and the "What's included" reassurance list. Only the surfaces and
+ * type scale moved.
+ *
+ * Data fetching is unchanged, as is the enrol link — this file is presentation.
  */
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
@@ -25,8 +36,18 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
 import { FloatingBlossoms } from "@/components/landing/florals";
+import {
+  badgeBase,
+  courseButtonPrimary,
+  courseCard,
+  courseCardHover,
+  courseTag,
+  iconTints,
+  pillBase,
+  pillTones,
+} from "@/components/course/course-surface";
 import { formatPriceWithFee } from "@/lib/constants";
 import type { Offering, Subject, Profile } from "@/lib/types/database";
 
@@ -107,63 +128,80 @@ export default async function OfferingDetailPage({
     <div>
       {/* ─── Hero banner ─── */}
       <section className="relative overflow-hidden py-14 md:py-20">
-        <div className="absolute inset-0 -z-20 aurora opacity-60" aria-hidden />
-        <div className="absolute inset-0 -z-10 grid-fade" aria-hidden />
+        <div className="aurora absolute inset-0 -z-20 opacity-60" aria-hidden />
+        <div className="grid-fade absolute inset-0 -z-10" aria-hidden />
         <FloatingBlossoms className="-z-10" />
 
         <div className="container relative mx-auto px-4">
           <Link
             href="/catalog"
-            className="inline-flex items-center gap-1 text-xs font-medium text-muted-foreground transition-colors hover:text-primary"
+            className="inline-flex items-center gap-1 text-[13px] font-semibold text-muted-foreground transition-colors hover:text-rose-700 dark:hover:text-rose-300"
           >
             ← Back to catalog
           </Link>
 
           <div className="mt-6 max-w-3xl">
-            {/* Chips */}
+            {/* Chips — the course header's badge row */}
             <div className="mb-5 flex flex-wrap items-center gap-2">
-              <Badge>{typeLabels[offering.type]}</Badge>
+              <span className={cn(badgeBase, pillTones.brand)}>
+                {typeLabels[offering.type]}
+              </span>
               {offering.type === "program" && (
-                <Badge
-                  variant="outline"
-                  className="border-emerald-300 text-emerald-700 dark:text-emerald-400"
-                >
-                  Age 12+
-                </Badge>
+                <span className={cn(badgeBase, pillTones.success)}>Age 12+</span>
               )}
-              <Badge
-                variant="outline"
-                className="inline-flex items-center gap-1"
+              <span
+                className={cn(
+                  badgeBase,
+                  pillTones.muted,
+                  "inline-flex items-center gap-1"
+                )}
               >
                 <ModeIcon className="h-3 w-3" />
                 {modeLabel}
-              </Badge>
+              </span>
               {offering.is_new && (
-                <Badge className="inline-flex items-center gap-1 bg-amber-500 text-white hover:bg-amber-500">
+                <span
+                  className={cn(
+                    badgeBase,
+                    pillTones.warning,
+                    "inline-flex items-center gap-1"
+                  )}
+                >
                   <Sparkles className="h-3 w-3" />
                   New
-                </Badge>
+                </span>
               )}
               {offering.is_ongoing && (
-                <Badge className="inline-flex items-center gap-1 bg-teal-600 text-white hover:bg-teal-600">
-                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-white" />
+                <span
+                  className={cn(
+                    badgeBase,
+                    pillTones.success,
+                    "inline-flex items-center gap-1"
+                  )}
+                >
+                  <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-current" />
                   On-going
-                </Badge>
+                </span>
               )}
               {offering.admission_closed && (
-                <Badge className="inline-flex items-center gap-1 bg-destructive text-destructive-foreground hover:bg-destructive">
+                <span
+                  className={cn(
+                    badgeBase,
+                    "inline-flex items-center gap-1 bg-[#FBEEEE] text-[#9A3D3D] dark:bg-red-950/40 dark:text-red-300"
+                  )}
+                >
                   <Lock className="h-3 w-3" />
                   Admission Closed
-                </Badge>
+                </span>
               )}
             </div>
 
-            <h1 className="font-heading text-balance text-4xl font-bold leading-tight tracking-tight sm:text-5xl md:text-6xl">
+            <h1 className="font-heading text-4xl leading-[1.1] font-bold tracking-[-0.01em] text-balance sm:text-5xl md:text-6xl">
               {offering.title}
             </h1>
 
             {offering.short_description && (
-              <p className="mt-5 max-w-2xl text-lg text-muted-foreground">
+              <p className="mt-5 max-w-2xl text-lg text-plum-body dark:text-muted-foreground">
                 {offering.short_description}
               </p>
             )}
@@ -174,50 +212,57 @@ export default async function OfferingDetailPage({
       {/* ─── Body ─── */}
       <section className="pb-20">
         <div className="container mx-auto px-4">
-          <div className="grid grid-cols-1 gap-8 lg:grid-cols-3">
+          <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
             {/* Left: content */}
-            <div className="space-y-10 lg:col-span-2">
+            <div className="space-y-5 lg:col-span-2">
               {/* About */}
-              <div>
-                <h2 className="font-heading text-2xl font-bold">
-                  About this {typeLabels[offering.type].toLowerCase()}
-                </h2>
-                <div className="mt-4 whitespace-pre-line text-muted-foreground">
+              <Panel title={`About this ${typeLabels[offering.type].toLowerCase()}`}>
+                <div className="mt-3.5 text-sm leading-relaxed whitespace-pre-line text-plum-body dark:text-muted-foreground">
                   {offering.description}
                 </div>
-              </div>
+              </Panel>
 
               {/* Subjects (programs) */}
               {offering.type === "program" && subjects.length > 0 && (
                 <div>
-                  <h2 className="font-heading text-2xl font-bold">
-                    Subjects covered
-                  </h2>
-                  <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
+                  <SectionHeading>Subjects covered</SectionHeading>
+                  <div className="mt-3.5 grid grid-cols-1 gap-3.5 md:grid-cols-2">
                     {subjects.map((subject) => (
                       <div
                         key={subject.id}
-                        className="rounded-2xl border border-border/60 bg-card/60 p-5 backdrop-blur-sm transition-all hover:border-primary/30"
+                        className={cn(
+                          courseCard,
+                          courseCardHover,
+                          "min-w-0 p-[18px]"
+                        )}
                       >
-                        <div className="flex items-start gap-3">
-                          <div className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-primary/10 text-primary">
-                            <BookOpen className="h-4 w-4" />
-                          </div>
-                          <div className="min-w-0 flex-1">
-                            <h3 className="font-heading text-base font-semibold">
-                              {subject.title}
-                            </h3>
-                            {subject.description && (
-                              <p className="mt-1 text-sm text-muted-foreground">
-                                {subject.description}
-                              </p>
-                            )}
-                            <p className="mt-3 inline-flex items-center gap-1.5 rounded-full bg-primary/10 px-2.5 py-0.5 text-xs font-medium text-primary">
-                              <Users className="h-3 w-3" />
-                              {subject.instructor?.full_name || "Instructor TBA"}
-                            </p>
-                          </div>
+                        <div
+                          className={cn(
+                            "mb-3.5 flex h-[38px] w-[38px] items-center justify-center rounded-[10px]",
+                            iconTints.brand
+                          )}
+                        >
+                          <BookOpen className="h-[18px] w-[18px]" />
                         </div>
+                        <h3 className="font-heading text-[15px] font-semibold">
+                          {subject.title}
+                        </h3>
+                        {subject.description && (
+                          <p className="mt-1 text-[13px] leading-relaxed text-plum-body dark:text-muted-foreground">
+                            {subject.description}
+                          </p>
+                        )}
+                        {/* `steel` is the instructor hue across the product */}
+                        <p
+                          className={cn(
+                            pillBase,
+                            pillTones.steel,
+                            "mt-3.5 inline-flex items-center gap-1.5"
+                          )}
+                        >
+                          <Users className="h-3 w-3" />
+                          {subject.instructor?.full_name || "Instructor TBA"}
+                        </p>
                       </div>
                     ))}
                   </div>
@@ -227,18 +272,26 @@ export default async function OfferingDetailPage({
               {/* Instructor (non-programs) */}
               {instructor && offering.type !== "program" && (
                 <div>
-                  <h2 className="font-heading text-2xl font-bold">
-                    Your instructor
-                  </h2>
-                  <div className="mt-4 flex items-center gap-4 rounded-2xl border border-border/60 bg-card/60 p-5 backdrop-blur-sm">
-                    <div className="flex h-14 w-14 items-center justify-center rounded-full bg-primary/10 text-primary">
-                      <Users className="h-6 w-6" />
+                  <SectionHeading>Your instructor</SectionHeading>
+                  <div
+                    className={cn(
+                      courseCard,
+                      "mt-3.5 flex items-center gap-3.5 p-[18px]"
+                    )}
+                  >
+                    <div
+                      className={cn(
+                        "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px]",
+                        pillTones.steel
+                      )}
+                    >
+                      <Users className="h-[18px] w-[18px]" />
                     </div>
-                    <div>
-                      <p className="font-heading text-base font-semibold">
+                    <div className="min-w-0">
+                      <p className="font-heading text-[15px] font-semibold">
                         {instructor.full_name}
                       </p>
-                      <p className="text-sm text-muted-foreground">
+                      <p className="mt-0.5 text-xs text-muted-foreground">
                         Instructor
                       </p>
                     </div>
@@ -247,11 +300,8 @@ export default async function OfferingDetailPage({
               )}
 
               {/* What's included (static quality list) */}
-              <div>
-                <h2 className="font-heading text-2xl font-bold">
-                  What&apos;s included
-                </h2>
-                <ul className="mt-4 grid grid-cols-1 gap-2 sm:grid-cols-2">
+              <Panel title="What's included">
+                <ul className="mt-3.5 grid grid-cols-1 gap-2.5 sm:grid-cols-2">
                   {[
                     "Live classes with recordings",
                     "Lifetime access to resources",
@@ -260,22 +310,22 @@ export default async function OfferingDetailPage({
                   ].map((item) => (
                     <li
                       key={item}
-                      className="flex items-center gap-2 text-sm text-muted-foreground"
+                      className="flex items-center gap-2 text-sm text-plum-body dark:text-muted-foreground"
                     >
-                      <CheckCircle2 className="h-4 w-4 shrink-0 text-primary" />
+                      <CheckCircle2 className="h-4 w-4 shrink-0 text-rose-500 dark:text-rose-300" />
                       {item}
                     </li>
                   ))}
                 </ul>
-              </div>
+              </Panel>
             </div>
 
-            {/* Right: sticky enrollment card */}
+            {/* Right: sticky enrolment card */}
             <aside className="lg:col-span-1">
               <div className="lg:sticky lg:top-24">
-                <div className="overflow-hidden rounded-3xl border border-primary/15 bg-card/80 shadow-xl shadow-primary/5 backdrop-blur-md">
+                <div className={cn(courseCard, "overflow-hidden")}>
                   {/* Thumbnail */}
-                  <div className="aspect-video bg-gradient-to-br from-rose-100 via-background to-rose-50 kufic-pattern relative">
+                  <div className="kufic-pattern relative aspect-video border-b border-border-soft bg-gradient-to-br from-rose-100 via-background to-rose-50 dark:border-border dark:from-rose-950/40 dark:via-card dark:to-card">
                     {offering.thumbnail_url ? (
                       // eslint-disable-next-line @next/next/no-img-element
                       <img
@@ -285,32 +335,32 @@ export default async function OfferingDetailPage({
                       />
                     ) : (
                       <div className="flex h-full w-full items-center justify-center">
-                        <BookOpen className="h-16 w-16 text-primary/25" />
+                        <BookOpen className="h-16 w-16 text-rose-300 dark:text-rose-800" />
                       </div>
                     )}
                   </div>
 
-                  <div className="space-y-5 p-6">
+                  <div className="space-y-4 p-5 sm:p-6">
                     {/* Price */}
                     <div>
-                      <div className="font-heading text-3xl font-bold text-primary">
+                      <div className="font-heading text-[28px] leading-none font-bold tracking-[-0.01em] text-rose-600 dark:text-rose-300">
                         {formatPriceWithFee(offering.price, offering.fee_type)}
                       </div>
                       {offering.fee_type === "monthly" &&
                         offering.price > 0 && (
-                          <p className="mt-1 text-xs text-muted-foreground">
+                          <p className="mt-2 text-xs text-muted-foreground">
                             Billed monthly
                           </p>
                         )}
                       {offering.price_inr && offering.price_inr > 0 && (
-                        <p className="mt-1 text-xs text-muted-foreground">
+                        <p className="mt-2 text-xs text-muted-foreground">
                           🇮🇳 India: ₹
                           {Number(offering.price_inr).toLocaleString("en-IN")}
                           {offering.fee_type === "monthly" ? " per month" : ""}
                         </p>
                       )}
                       {offering.price_usd && offering.price_usd > 0 && (
-                        <p className="text-xs text-muted-foreground">
+                        <p className="mt-1 text-xs text-muted-foreground">
                           🌍 Intl: $
                           {Number(offering.price_usd).toLocaleString("en-US", {
                             minimumFractionDigits: 0,
@@ -322,12 +372,12 @@ export default async function OfferingDetailPage({
                       )}
                     </div>
 
-                    <div className="h-px bg-border/60" />
+                    <div className="h-px bg-border-soft dark:bg-border" />
 
                     {/* Key details */}
-                    <div className="space-y-2.5 text-sm">
+                    <div className="flex flex-wrap gap-1.5">
                       {offering.schedule_start && (
-                        <Row icon={<Calendar className="h-4 w-4" />}>
+                        <Chip icon={<Calendar className="h-3 w-3" />}>
                           Starts{" "}
                           {new Date(
                             offering.schedule_start
@@ -336,10 +386,10 @@ export default async function OfferingDetailPage({
                             day: "numeric",
                             year: "numeric",
                           })}
-                        </Row>
+                        </Chip>
                       )}
                       {offering.schedule_end && (
-                        <Row icon={<Clock className="h-4 w-4" />}>
+                        <Chip icon={<Clock className="h-3 w-3" />}>
                           Ends{" "}
                           {new Date(offering.schedule_end).toLocaleDateString(
                             "en-PK",
@@ -349,31 +399,34 @@ export default async function OfferingDetailPage({
                               year: "numeric",
                             }
                           )}
-                        </Row>
+                        </Chip>
                       )}
                       {offering.type === "program" && (
-                        <Row icon={<BookOpen className="h-4 w-4" />}>
+                        <Chip icon={<BookOpen className="h-3 w-3" />}>
                           {subjects.length} subjects included
-                        </Row>
+                        </Chip>
                       )}
-                      <Row icon={<ModeIcon className="h-4 w-4" />}>
+                      <Chip icon={<ModeIcon className="h-3 w-3" />}>
                         {modeLabel}
-                      </Row>
+                      </Chip>
                     </div>
 
                     {/* CTA */}
                     {offering.admission_closed ? (
-                      <div className="flex items-center justify-center gap-2 rounded-xl border border-destructive/20 bg-destructive/10 py-3 text-sm font-semibold text-destructive">
+                      <div className="flex items-center justify-center gap-2 rounded-[10px] border border-[#E4A9A9] bg-[#FBEEEE] py-2.5 text-[13px] font-semibold text-[#9A3D3D] dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
                         <Lock className="h-4 w-4" />
                         Admission Closed
                       </div>
                     ) : (
                       <Link
                         href={`/offerings/${offering.slug}/enroll`}
-                        className="group flex h-12 w-full items-center justify-center rounded-full bg-primary px-5 text-sm font-semibold text-primary-foreground shadow-lg shadow-primary/25 transition-all hover:shadow-xl hover:shadow-primary/30 active:scale-[0.98]"
+                        className={cn(
+                          courseButtonPrimary,
+                          "press group h-11 w-full justify-center text-sm"
+                        )}
                       >
                         Enroll Now
-                        <ArrowRight className="ml-2 h-4 w-4 transition-transform group-hover:translate-x-0.5" />
+                        <ArrowRight className="h-4 w-4 transition-transform group-hover:translate-x-0.5" />
                       </Link>
                     )}
 
@@ -391,7 +444,33 @@ export default async function OfferingDetailPage({
   );
 }
 
-function Row({
+/** Section titles sit at the card's heading scale, not the hero's. */
+function SectionHeading({ children }: { children: React.ReactNode }) {
+  return (
+    <h2 className="font-heading text-[17px] font-bold tracking-[-0.01em]">
+      {children}
+    </h2>
+  );
+}
+
+/** A titled body panel on the course card surface. */
+function Panel({
+  title,
+  children,
+}: {
+  title: string;
+  children: React.ReactNode;
+}) {
+  return (
+    <div className={cn(courseCard, "p-5 sm:px-6 sm:py-[22px]")}>
+      <SectionHeading>{title}</SectionHeading>
+      {children}
+    </div>
+  );
+}
+
+/** A key detail on the enrolment card, in the shared meta-chip style. */
+function Chip({
   icon,
   children,
 }: {
@@ -399,9 +478,9 @@ function Row({
   children: React.ReactNode;
 }) {
   return (
-    <div className="flex items-center gap-2 text-muted-foreground">
-      <span className="text-primary/70">{icon}</span>
-      <span>{children}</span>
-    </div>
+    <span className={cn(courseTag, "inline-flex items-center gap-1.5")}>
+      <span className="text-rose-500 dark:text-rose-300">{icon}</span>
+      {children}
+    </span>
   );
 }
