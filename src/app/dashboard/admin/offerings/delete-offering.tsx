@@ -21,11 +21,26 @@ import { toast } from "sonner";
 interface DeleteOfferingProps {
   offeringId: string;
   offeringTitle: string;
+  /**
+   * Overrides the icon-only trigger. The course workspace header needs a
+   * labelled button in the mockup's button style, and re-implementing the
+   * confirm dialog there would mean two delete paths to keep in step.
+   */
+  triggerClassName?: string;
+  triggerLabel?: React.ReactNode;
+  /**
+   * Where to go once the offering is gone. The list can just refresh; a page
+   * scoped to this offering would 404 on itself, so it passes a destination.
+   */
+  redirectTo?: string;
 }
 
 export function DeleteOffering({
   offeringId,
   offeringTitle,
+  triggerClassName,
+  triggerLabel,
+  redirectTo,
 }: DeleteOfferingProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
@@ -47,7 +62,8 @@ export function DeleteOffering({
 
       toast.success("Offering deleted.");
       setOpen(false);
-      router.refresh();
+      if (redirectTo) router.replace(redirectTo);
+      else router.refresh();
     } catch (error) {
       toast.error(
         error instanceof Error
@@ -62,9 +78,12 @@ export function DeleteOffering({
   return (
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogTrigger
-        className="inline-flex shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 h-7 gap-1 px-2.5 text-[0.8rem] font-medium transition-all"
+        className={
+          triggerClassName ??
+          "inline-flex shrink-0 items-center justify-center rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 h-7 gap-1 px-2.5 text-[0.8rem] font-medium transition-all"
+        }
       >
-        <Trash2 className="h-3.5 w-3.5" />
+        {triggerLabel ?? <Trash2 className="h-3.5 w-3.5" />}
       </DialogTrigger>
       <DialogContent>
         <DialogHeader>

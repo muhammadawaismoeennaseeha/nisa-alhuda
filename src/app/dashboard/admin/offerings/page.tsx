@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/link-button";
 import { formatPriceWithFee } from "@/lib/constants";
-import { Plus, BookOpen, Pencil, Users, Lock } from "lucide-react";
+import { Plus, BookOpen, LayoutGrid, Pencil, Users, Lock } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DeleteOffering } from "./delete-offering";
 import { OfferingToggles } from "./offering-toggles";
@@ -213,6 +213,16 @@ export default async function AdminOfferingsPage() {
                         status={offering.status}
                         admissionClosed={offering.admission_closed || false}
                       />
+                      {/* The course workspace — one page with Overview,
+                          People, Course Structure and Schedule. The Students
+                          and Edit screens below still exist and still work. */}
+                      <LinkButton
+                        size="sm"
+                        href={`/dashboard/admin/offerings/${offering.id}/workspace`}
+                      >
+                        <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
+                        Manage
+                      </LinkButton>
                       <LinkButton
                         variant="outline"
                         size="sm"
