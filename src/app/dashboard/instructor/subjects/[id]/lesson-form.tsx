@@ -18,33 +18,12 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { createLesson, diffLesson, updateLesson } from "@/lib/course-structure";
+import {
+  pktInputToUtcIso,
+  utcIsoToPktInput,
+} from "@/lib/recurring-schedule";
 import type { Lesson } from "@/lib/types/database";
-
-// PKT is UTC+5 with no DST — fixed offset is correct year-round.
-const PKT_OFFSET_MS = 5 * 60 * 60 * 1000;
-
-/**
- * Convert a UTC ISO timestamp to a YYYY-MM-DDTHH:MM string representing
- * the same instant in PKT wall-clock — for prefilling a datetime-local
- * input without depending on the admin's browser timezone.
- */
-function utcIsoToPktInput(iso: string): string {
-  const pkt = new Date(new Date(iso).getTime() + PKT_OFFSET_MS);
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${pkt.getUTCFullYear()}-${pad(pkt.getUTCMonth() + 1)}-${pad(pkt.getUTCDate())}T${pad(pkt.getUTCHours())}:${pad(pkt.getUTCMinutes())}`;
-}
-
-/**
- * Treat a YYYY-MM-DDTHH:MM string from a datetime-local input as PKT
- * wall-clock and convert to a UTC ISO for storage. Independent of
- * `new Date(...)`'s reliance on the host timezone.
- */
-function pktInputToUtcIso(local: string): string {
-  const [datePart, timePart] = local.split("T");
-  const [y, mo, d] = datePart.split("-").map(Number);
-  const [h, mi] = (timePart ?? "00:00").split(":").map(Number);
-  return new Date(Date.UTC(y, mo - 1, d, h, mi) - PKT_OFFSET_MS).toISOString();
-}
 
 interface LessonFormProps {
   subjectId: string;
@@ -92,30 +71,29 @@ export function LessonForm({
     try {
       const supabase = createClient();
 
-      const lessonData = {
-        offering_id: offeringId,
-        subject_id: subjectId,
+      // This form owns the recording field, so it is one of the few callers
+      // that may pass `recording_url` at all. `diffLesson` still narrows the
+      // statement to what changed, so leaving the field alone leaves the
+      // column alone. See src/lib/course-structure.ts.
+      const values = {
         title: title.trim(),
         description: description.trim() || null,
         scheduled_at: scheduledAt ? pktInputToUtcIso(scheduledAt) : null,
         live_class_link: liveClassLink.trim() || null,
         recording_url: recordingUrl.trim() || null,
         is_published: isPublished,
-        sort_order: lesson?.sort_order ?? nextSortOrder,
       };
 
       if (isEditing) {
-        const { error } = await supabase
-          .from("lessons")
-          .update(lessonData)
-          .eq("id", lesson.id);
-
-        if (error) throw new Error(error.message);
+        await updateLesson(supabase, lesson.id, diffLesson(lesson, values));
         toast.success("Class updated!");
       } else {
-        const { error } = await supabase.from("lessons").insert(lessonData);
-
-        if (error) throw new Error(error.message);
+        await createLesson(supabase, {
+          ...values,
+          offering_id: offeringId,
+          subject_id: subjectId,
+          sort_order: nextSortOrder,
+        });
         toast.success("Class created!");
       }
 

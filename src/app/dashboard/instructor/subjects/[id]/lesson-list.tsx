@@ -46,6 +46,7 @@ import { Badge } from "@/components/ui/badge";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { LessonForm } from "./lesson-form";
+import { deleteLesson, updateLesson } from "@/lib/course-structure";
 import { partitionLessons, isExternalUrl } from "@/lib/resource-helpers";
 import { RecordingPlayer } from "@/components/lesson/recording-player";
 import { isYouTubeUrl } from "@/lib/video-helpers";
@@ -179,12 +180,9 @@ export function LessonList({
   async function handleTogglePublish(lesson: Lesson) {
     setTogglingId(lesson.id);
     try {
-      const supabase = createClient();
-      const { error } = await supabase
-        .from("lessons")
-        .update({ is_published: !lesson.is_published })
-        .eq("id", lesson.id);
-      if (error) throw error;
+      await updateLesson(createClient(), lesson.id, {
+        is_published: !lesson.is_published,
+      });
       toast.success(lesson.is_published ? "Class hidden" : "Class published");
       router.refresh();
     } catch {
@@ -198,16 +196,7 @@ export function LessonList({
     if (!confirm("Delete this class and all of its resources? This cannot be undone.")) return;
     setDeletingId(lessonId);
     try {
-      const supabase = createClient();
-      // Resources should cascade via FK (ON DELETE CASCADE). If not, the
-      // RLS-permitted resources DELETE below would clean them; we fire it
-      // defensively so we don't leave orphans.
-      await supabase.from("resources").delete().eq("lesson_id", lessonId);
-      const { error } = await supabase
-        .from("lessons")
-        .delete()
-        .eq("id", lessonId);
-      if (error) throw error;
+      await deleteLesson(createClient(), lessonId);
       toast.success("Class deleted.");
       router.refresh();
     } catch {

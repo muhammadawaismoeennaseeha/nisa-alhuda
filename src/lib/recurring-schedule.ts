@@ -22,6 +22,31 @@ export interface RecurringScheduleInput {
 }
 
 /**
+ * Convert a UTC ISO timestamp to the `YYYY-MM-DDTHH:MM` string an
+ * `<input type="datetime-local">` wants, expressed in PKT wall-clock.
+ *
+ * Reads the shifted instant through `getUTC*` so the result is the same
+ * whatever timezone the admin's laptop is set to.
+ */
+export function utcIsoToPktInput(iso: string): string {
+  const pkt = new Date(new Date(iso).getTime() + PKT_OFFSET_MS);
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pkt.getUTCFullYear()}-${pad(pkt.getUTCMonth() + 1)}-${pad(pkt.getUTCDate())}T${pad(pkt.getUTCHours())}:${pad(pkt.getUTCMinutes())}`;
+}
+
+/**
+ * The inverse: treat a `datetime-local` value as PKT wall-clock and return
+ * the UTC ISO string to store. Built from `Date.UTC`, so it never consults
+ * the host timezone.
+ */
+export function pktInputToUtcIso(local: string): string {
+  const [datePart, timePart] = local.split("T");
+  const [y, mo, d] = datePart.split("-").map(Number);
+  const [h, mi] = (timePart ?? "00:00").split(":").map(Number);
+  return new Date(Date.UTC(y, mo - 1, d, h, mi) - PKT_OFFSET_MS).toISOString();
+}
+
+/**
  * Returns true if every required field for a "real" recurring schedule
  * is set. The label is optional — the UI falls back to a computed label
  * when missing.
