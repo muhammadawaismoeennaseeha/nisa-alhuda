@@ -11,19 +11,33 @@
  *
  * Both instructors (their own subject) and admins (any subject) can use
  * this page; RLS already permits both.
+ *
+ * ─── Presentation ──────────────────────────────────────────────────────────
+ *
+ * Re-skinned onto the shared course surface (`@/components/course/*`), so an
+ * admin moving from the course workspace into a subject — and a student
+ * looking at the same subject in the hub — see one visual language: cream
+ * page, white course cards with a hairline rose edge, Poppins headings.
+ *
+ * Every query, cast and prop below is untouched by that re-skin. Nothing on
+ * this file reads or writes `lessons.recording_url`; it only hands the rows to
+ * `LessonList`.
  */
 import { notFound } from "next/navigation";
 import { createClient } from "@/lib/supabase/server";
-import { LinkButton } from "@/components/ui/link-button";
-import {
-  ArrowLeft,
-  BookOpen,
-  Calendar,
-  ClipboardCheck,
-  ExternalLink,
-  Radio,
-} from "lucide-react";
+import { Calendar, ClipboardCheck, ExternalLink, Radio } from "lucide-react";
+import { cn } from "@/lib/utils";
 import { getDashboardViewer } from "@/lib/auth-helpers";
+import {
+  CoursePageHeader,
+  type CourseBadge,
+} from "@/components/course/course-page-header";
+import {
+  courseButton,
+  courseButtonPrimary,
+  courseCard,
+  iconTints,
+} from "@/components/course/course-surface";
 import { LessonList } from "./lesson-list";
 import {
   hasRecurringSchedule,
@@ -31,6 +45,16 @@ import {
   scheduleDisplayLabel,
 } from "@/lib/recurring-schedule";
 import type { Lesson, Resource, Subject } from "@/lib/types/database";
+
+const OFFERING_STATUS_BADGES: Record<string, CourseBadge> = {
+  draft: { label: "Draft", tone: "warning" },
+  published: { label: "Published", tone: "success" },
+  archived: { label: "Archived", tone: "muted" },
+};
+
+function plural(n: number, one: string, many = `${one}s`): string {
+  return `${n} ${n === 1 ? one : many}`;
+}
 
 export default async function SubjectFolderPage({
   params,
@@ -81,45 +105,39 @@ export default async function SubjectFolderPage({
     resources = (resourcesData as Resource[]) || [];
   }
 
-  return (
-    <div>
-      <LinkButton
-        variant="ghost"
-        href="/dashboard/instructor"
-        className="mb-4"
-      >
-        <ArrowLeft className="h-4 w-4 mr-1.5" />
-        Back to subjects
-      </LinkButton>
+  const offering = (
+    subject as { offering?: { title?: string; status?: string } }
+  ).offering;
+  const instructorName = (subject as { instructor?: { full_name?: string } })
+    .instructor?.full_name;
 
-      <div className="mb-6">
-        <p className="text-xs uppercase tracking-[0.18em] text-primary font-medium mb-1">
-          {(subject as { offering?: { title?: string } }).offering?.title || "Subject"}
-        </p>
-        <div className="flex items-start gap-3">
-          <div className="h-11 w-11 rounded-xl bg-primary/10 ring-1 ring-primary/15 flex items-center justify-center shrink-0">
-            <BookOpen className="h-5 w-5 text-primary" />
-          </div>
-          <div className="flex-1 min-w-0">
-            <h1 className="font-heading text-2xl font-bold tracking-tight">
-              {subject.title}
-            </h1>
-            {viewer.isAdmin && subject.instructor && (
-              <p className="text-xs text-muted-foreground mt-0.5">
-                Instructor:{" "}
-                <span className="font-medium text-foreground">
-                  {(subject.instructor as { full_name?: string }).full_name}
-                </span>
-              </p>
-            )}
-            {subject.description && (
-              <p className="text-sm text-muted-foreground mt-1 max-w-xl">
-                {subject.description}
-              </p>
-            )}
-          </div>
-        </div>
-      </div>
+  const badges: CourseBadge[] = [];
+  if (offering?.status && OFFERING_STATUS_BADGES[offering.status]) {
+    badges.push(OFFERING_STATUS_BADGES[offering.status]);
+  }
+
+  // "Tajweed Programme · Ustadha Maryam · 8 classes" — the header's context
+  // line. The instructor name only earns its place for an admin, who may be
+  // looking at somebody else's subject.
+  const context = [
+    offering?.title || "Subject",
+    viewer.isAdmin && instructorName ? instructorName : null,
+    plural(lessons.length, "class", "classes"),
+  ]
+    .filter(Boolean)
+    .join(" · ");
+
+  return (
+    <div className="space-y-5">
+      <CoursePageHeader
+        backHref="/dashboard/instructor"
+        backLabel="Back to subjects"
+        code={(subject as Subject).slug}
+        name={subject.title}
+        context={context}
+        description={subject.description}
+        badges={badges}
+      />
 
       {/* Recurring class banner — shown when admin has set the per-subject
           schedule (URL + day + time). One Join button forever. */}
@@ -149,28 +167,33 @@ function RecurringClassBanner({ subject }: { subject: Subject }) {
   const label = scheduleDisplayLabel(subject) ?? "Recurring class";
   return (
     <div
-      className={`mb-6 flex flex-col gap-3 rounded-xl border p-4 sm:flex-row sm:items-center ${
-        live
-          ? "border-emerald-300 bg-emerald-50/60 dark:bg-emerald-950/20"
-          : "border-primary/30 bg-primary/5"
-      }`}
+      className={cn(
+        courseCard,
+        "flex flex-col gap-3 px-[18px] py-4 sm:flex-row sm:items-center",
+        live && "border-sage-200 bg-sage-50 dark:border-emerald-900 dark:bg-emerald-950/20"
+      )}
     >
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-primary/10 ring-1 ring-primary/15 shrink-0">
+      <div
+        className={cn(
+          "flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px]",
+          live ? iconTints.success : iconTints.brand
+        )}
+      >
         {live ? (
-          <Radio className="h-5 w-5 text-emerald-600" />
+          <Radio className="h-[18px] w-[18px]" />
         ) : (
-          <Calendar className="h-5 w-5 text-primary" />
+          <Calendar className="h-[18px] w-[18px]" />
         )}
       </div>
-      <div className="flex-1 min-w-0">
+      <div className="min-w-0 flex-1">
         <div className="flex flex-wrap items-center gap-2">
-          <h2 className="font-heading font-semibold text-sm">
+          <h2 className="font-heading text-[13.5px] font-semibold">
             Recurring live class
           </h2>
           {live && (
-            <span className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 text-white text-[10px] font-bold uppercase tracking-wider px-2 py-0.5">
+            <span className="inline-flex items-center gap-1.5 rounded-full bg-sage-700 px-2 py-0.5 text-[10px] font-bold tracking-[0.05em] uppercase text-white dark:bg-emerald-700">
               <span className="relative flex h-1.5 w-1.5">
-                <span className="absolute inline-flex h-full w-full rounded-full bg-white opacity-75 animate-ping" />
+                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-white opacity-75" />
                 <span className="relative inline-flex h-1.5 w-1.5 rounded-full bg-white" />
               </span>
               Live now
@@ -178,7 +201,7 @@ function RecurringClassBanner({ subject }: { subject: Subject }) {
           )}
         </div>
         <p className="mt-0.5 text-xs text-muted-foreground">{label}</p>
-        <p className="mt-0.5 text-xs text-muted-foreground truncate">
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
           Same link every week:{" "}
           <span className="font-mono">{subject.recurring_meeting_url}</span>
         </p>
@@ -187,11 +210,12 @@ function RecurringClassBanner({ subject }: { subject: Subject }) {
         href={subject.recurring_meeting_url!}
         target="_blank"
         rel="noopener noreferrer"
-        className={`inline-flex items-center justify-center gap-1.5 rounded-full px-4 py-2 text-sm font-semibold transition-colors press shrink-0 ${
-          live
-            ? "bg-emerald-600 hover:bg-emerald-700 text-white"
-            : "bg-primary hover:bg-primary/90 text-primary-foreground"
-        }`}
+        className={cn(
+          courseButtonPrimary,
+          "press justify-center",
+          live &&
+            "border-sage-700 bg-sage-700 hover:border-sage-700/90 hover:bg-sage-700/90 dark:border-emerald-700 dark:bg-emerald-700"
+        )}
       >
         Join Live
         <ExternalLink className="h-3.5 w-3.5" />
@@ -202,16 +226,22 @@ function RecurringClassBanner({ subject }: { subject: Subject }) {
 
 function QuizBanner({ quizUrl }: { quizUrl: string }) {
   return (
-    <div className="mb-6 flex flex-col gap-3 rounded-xl border border-violet-200 bg-violet-50/60 p-4 dark:border-violet-900/60 dark:bg-violet-950/20 sm:flex-row sm:items-center">
-      <div className="flex h-10 w-10 items-center justify-center rounded-xl bg-violet-100 ring-1 ring-violet-200 shrink-0 dark:bg-violet-900/40 dark:ring-violet-900/60">
-        <ClipboardCheck className="h-5 w-5 text-violet-700 dark:text-violet-300" />
+    <div
+      className={cn(
+        courseCard,
+        "flex flex-col gap-3 px-[18px] py-4 sm:flex-row sm:items-center"
+      )}
+    >
+      <div className="flex h-[38px] w-[38px] shrink-0 items-center justify-center rounded-[10px] bg-steel-50 text-steel-700 dark:bg-sky-950/50 dark:text-sky-300">
+        <ClipboardCheck className="h-[18px] w-[18px]" />
       </div>
-      <div className="flex-1 min-w-0">
-        <h2 className="font-heading font-semibold text-sm">Quiz</h2>
+      <div className="min-w-0 flex-1">
+        <h2 className="font-heading text-[13.5px] font-semibold">Quiz</h2>
         <p className="mt-0.5 text-xs text-muted-foreground">
-          Students see a “Take Quiz” button on this subject that opens in a new tab.
+          Students see a “Take Quiz” button on this subject that opens in a new
+          tab.
         </p>
-        <p className="mt-0.5 text-xs text-muted-foreground truncate">
+        <p className="mt-0.5 truncate text-xs text-muted-foreground">
           <span className="font-mono">{quizUrl}</span>
         </p>
       </div>
@@ -219,7 +249,7 @@ function QuizBanner({ quizUrl }: { quizUrl: string }) {
         href={quizUrl}
         target="_blank"
         rel="noopener noreferrer"
-        className="inline-flex items-center justify-center gap-1.5 rounded-full bg-violet-600 hover:bg-violet-700 px-4 py-2 text-sm font-semibold text-white transition-colors press shrink-0"
+        className={cn(courseButton, "press justify-center")}
       >
         <ClipboardCheck className="h-4 w-4" />
         Open Quiz

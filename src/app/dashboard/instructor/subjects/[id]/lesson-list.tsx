@@ -11,6 +11,25 @@
  *
  * Replaces the previous flat lesson list + the standalone Resources page
  * (which is gone from primary nav). One screen, one mental model.
+ *
+ * ─── Presentation ──────────────────────────────────────────────────────────
+ *
+ * Re-skinned onto the shared course surface (`@/components/course/*`): rose
+ * numbered squares lead each class, status is a pill from `pillTones`, and the
+ * per-row controls are the same 28px icon buttons the admin structure editor
+ * uses. Nothing about how a class is created, edited, published or deleted
+ * changed with the skin.
+ *
+ * ─── Recordings ────────────────────────────────────────────────────────────
+ *
+ * `lessons.recording_url` is the only copy of a class recording. This screen:
+ *   - never writes it — the publish toggle sends `{ is_published }` alone, and
+ *     the edit path is `LessonForm`, which locks an existing recording behind a
+ *     deliberate "Replace";
+ *   - still offers both watch affordances it always did (a `target="_blank"`
+ *     anchor for non-YouTube URLs, the lazy `RecordingPlayer` for YouTube);
+ *   - names the recording in the delete confirmation, as the admin editor does,
+ *     so no one loses one to a reflexive "OK".
  */
 "use client";
 
@@ -27,7 +46,6 @@ import {
   Calendar,
   ExternalLink,
   ChevronDown,
-  ChevronUp,
   Upload,
   FileText,
   Image as ImageIcon,
@@ -39,14 +57,25 @@ import {
   Link2,
   Globe,
 } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
+import { cn } from "@/lib/utils";
+import {
+  courseButton,
+  courseButtonDanger,
+  courseButtonPrimary,
+  courseCard,
+  courseIconButton,
+  courseTag,
+  iconTints,
+  pillBase,
+  pillTones,
+  type PillTone,
+} from "@/components/course/course-surface";
+import { CourseConfirmDialog } from "@/components/course/course-confirm";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import { LessonForm } from "./lesson-form";
-import { deleteLesson, updateLesson } from "@/lib/course-structure";
+import { deleteLesson, hasRecording, updateLesson } from "@/lib/course-structure";
 import { partitionLessons, isExternalUrl } from "@/lib/resource-helpers";
 import { RecordingPlayer } from "@/components/lesson/recording-player";
 import { isYouTubeUrl } from "@/lib/video-helpers";
@@ -65,20 +94,43 @@ interface LessonListProps {
   subjectRecurringMeetingUrl?: string | null;
 }
 
-const FILE_ICON_MAP: Record<string, typeof FileText> = {
-  pdf: FileText,
-  doc: FileText,
-  docx: FileText,
-  txt: FileText,
-  png: ImageIcon,
-  jpg: ImageIcon,
-  jpeg: ImageIcon,
-  webp: ImageIcon,
+/** The hairline that separates rows inside a course card. */
+const HAIRLINE = "border-border-soft dark:border-border";
+
+/** The uppercase section label above Resources / Classes. */
+const SECTION_LABEL =
+  "flex items-center gap-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-muted-foreground";
+
+/** The drop zone, in its resting and drag-over states. */
+const DROP_ZONE =
+  "mb-3 cursor-pointer rounded-[10px] border-2 border-dashed p-3 text-center transition-colors";
+const DROP_ZONE_IDLE =
+  "border-border-soft hover:border-rose-300 hover:bg-rose-50/50 dark:border-border dark:hover:bg-rose-950/20";
+const DROP_ZONE_OVER = "border-rose-400 bg-rose-50 dark:bg-rose-950/30";
+
+const GLYPH = "h-4 w-4";
+
+/**
+ * Resource glyphs, stored as elements rather than component references: a
+ * `const Icon = MAP[ext]` in a component body reads to the linter as a
+ * component defined during render.
+ */
+const FILE_GLYPHS: Record<string, React.ReactNode> = {
+  pdf: <FileText className={GLYPH} />,
+  doc: <FileText className={GLYPH} />,
+  docx: <FileText className={GLYPH} />,
+  txt: <FileText className={GLYPH} />,
+  png: <ImageIcon className={GLYPH} />,
+  jpg: <ImageIcon className={GLYPH} />,
+  jpeg: <ImageIcon className={GLYPH} />,
+  webp: <ImageIcon className={GLYPH} />,
 };
 
-function getFileIcon(name: string) {
-  const ext = name.split(".").pop()?.toLowerCase() || "";
-  return FILE_ICON_MAP[ext] || FileIcon;
+/** A globe for an external link, otherwise the glyph for the file extension. */
+function resourceGlyph(resource: Resource): React.ReactNode {
+  if (isExternalUrl(resource.file_url)) return <Globe className={GLYPH} />;
+  const ext = resource.title.split(".").pop()?.toLowerCase() || "";
+  return FILE_GLYPHS[ext] ?? <FileIcon className={GLYPH} />;
 }
 
 function formatFileSize(bytes: number) {
@@ -87,21 +139,16 @@ function formatFileSize(bytes: number) {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
 }
 
-type ClassStatus =
-  | { kind: "live"; label: "Live now"; tone: "text-emerald-600 bg-emerald-50 border-emerald-200"; icon: typeof Radio }
-  | { kind: "upcoming"; label: string; tone: "text-blue-600 bg-blue-50 border-blue-200"; icon: typeof Clock }
-  | { kind: "recorded"; label: "Recorded"; tone: "text-primary bg-primary/10 border-primary/20"; icon: typeof PlayCircle }
-  | { kind: "missing-rec"; label: "No recording yet"; tone: "text-amber-600 bg-amber-50 border-amber-200"; icon: typeof Clock }
-  | { kind: "draft"; label: "Draft"; tone: "text-muted-foreground bg-muted border-border"; icon: typeof Calendar };
+type ClassStatus = {
+  kind: "live" | "upcoming" | "recorded" | "missing-rec" | "draft";
+  label: string;
+  tone: PillTone;
+  icon: typeof Calendar;
+};
 
 function getClassStatus(lesson: Lesson): ClassStatus {
   if (!lesson.scheduled_at) {
-    return {
-      kind: "draft",
-      label: "Draft",
-      tone: "text-muted-foreground bg-muted border-border",
-      icon: Calendar,
-    };
+    return { kind: "draft", label: "Draft", tone: "muted", icon: Calendar };
   }
   const now = Date.now();
   const start = new Date(lesson.scheduled_at).getTime();
@@ -109,12 +156,7 @@ function getClassStatus(lesson: Lesson): ClassStatus {
   // unless it already has a recording (then it's clearly done).
   const liveWindowEnd = start + 2 * 60 * 60 * 1000;
   if (now >= start && now <= liveWindowEnd && !lesson.recording_url) {
-    return {
-      kind: "live",
-      label: "Live now",
-      tone: "text-emerald-600 bg-emerald-50 border-emerald-200",
-      icon: Radio,
-    };
+    return { kind: "live", label: "Live now", tone: "success", icon: Radio };
   }
   if (now < start) {
     const diff = start - now;
@@ -123,25 +165,20 @@ function getClassStatus(lesson: Lesson): ClassStatus {
     if (mins < 60) label = `Starts in ${mins}m`;
     else if (mins < 60 * 24) label = `Starts in ${Math.round(mins / 60)}h`;
     else label = `In ${Math.round(mins / (60 * 24))}d`;
-    return {
-      kind: "upcoming",
-      label,
-      tone: "text-blue-600 bg-blue-50 border-blue-200",
-      icon: Clock,
-    };
+    return { kind: "upcoming", label, tone: "steel", icon: Clock };
   }
   if (lesson.recording_url) {
     return {
       kind: "recorded",
       label: "Recorded",
-      tone: "text-primary bg-primary/10 border-primary/20",
+      tone: "brand",
       icon: PlayCircle,
     };
   }
   return {
     kind: "missing-rec",
     label: "No recording yet",
-    tone: "text-amber-600 bg-amber-50 border-amber-200",
+    tone: "warning",
     icon: Clock,
   };
 }
@@ -156,6 +193,7 @@ export function LessonList({
   const router = useRouter();
   const [showForm, setShowForm] = useState(false);
   const [editingLesson, setEditingLesson] = useState<Lesson | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<Lesson | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [togglingId, setTogglingId] = useState<string | null>(null);
   const [expandedId, setExpandedId] = useState<string | null>(null);
@@ -180,6 +218,8 @@ export function LessonList({
   async function handleTogglePublish(lesson: Lesson) {
     setTogglingId(lesson.id);
     try {
+      // A single-column patch: `recording_url` is not in it, so publishing a
+      // class cannot disturb its recording.
       await updateLesson(createClient(), lesson.id, {
         is_published: !lesson.is_published,
       });
@@ -192,12 +232,14 @@ export function LessonList({
     }
   }
 
-  async function handleDeleteClass(lessonId: string) {
-    if (!confirm("Delete this class and all of its resources? This cannot be undone.")) return;
+  async function confirmDeleteClass() {
+    if (!pendingDelete) return;
+    const lessonId = pendingDelete.id;
     setDeletingId(lessonId);
     try {
       await deleteLesson(createClient(), lessonId);
       toast.success("Class deleted.");
+      setPendingDelete(null);
       router.refresh();
     } catch {
       toast.error("Failed to delete class.");
@@ -337,7 +379,7 @@ export function LessonList({
   );
 
   return (
-    <div>
+    <div className="space-y-5">
       {/* Subject-level Resources */}
       {(resourceLessons.length > 0 || subjectResources.length > 0) && (
         <ResourcesSection
@@ -358,63 +400,115 @@ export function LessonList({
         />
       )}
 
-      <div className="flex items-center justify-between mb-4">
-        <h2 className="font-heading font-semibold text-lg">
-          Classes ({classLessons.length})
-        </h2>
-        <Button onClick={handleAddNew} className="press">
-          <Plus className="h-4 w-4 mr-1.5" />
-          Add Class
-        </Button>
+      <div>
+        <div className="mb-3 flex items-center justify-between gap-3">
+          <h2 className="font-heading text-[15px] font-bold">
+            Classes ({classLessons.length})
+          </h2>
+          <button
+            type="button"
+            onClick={handleAddNew}
+            className={cn(courseButtonPrimary, "press cursor-pointer")}
+          >
+            <Plus className="h-4 w-4" />
+            Add Class
+          </button>
+        </div>
+
+        {classLessons.length === 0 ? (
+          <div
+            className={cn(
+              courseCard,
+              "flex flex-col items-center justify-center px-6 py-12 text-center"
+            )}
+          >
+            <Video className="mb-4 h-10 w-10 text-rose-200 dark:text-rose-900" />
+            <p className="mb-1.5 text-base text-muted-foreground">
+              No classes yet
+            </p>
+            <p className="mb-4 max-w-md text-sm text-muted-foreground">
+              Add the first class — name it by date (e.g. &ldquo;27 Apr
+              2026&rdquo;) or by topic (e.g. &ldquo;Surah Al-Fatihah —
+              Tafseer&rdquo;). You can include the live link, recording, and
+              resource files.
+            </p>
+            <button
+              type="button"
+              onClick={handleAddNew}
+              className={cn(courseButtonPrimary, "cursor-pointer")}
+            >
+              <Plus className="h-4 w-4" />
+              Add First Class
+            </button>
+          </div>
+        ) : (
+          <div className="space-y-3">
+            {classLessons.map((lesson, idx) => {
+              const isExpanded = expandedId === lesson.id;
+              const status = getClassStatus(lesson);
+              const StatusIcon = status.icon;
+              const lessonResources = resources.filter(
+                (r) => r.lesson_id === lesson.id
+              );
+              return (
+                <ClassCard
+                  key={lesson.id}
+                  lesson={lesson}
+                  idx={idx}
+                  isExpanded={isExpanded}
+                  onToggle={() => setExpandedId(isExpanded ? null : lesson.id)}
+                  status={status}
+                  StatusIcon={StatusIcon}
+                  resources={lessonResources}
+                  onEdit={() => handleEdit(lesson)}
+                  onDelete={() => setPendingDelete(lesson)}
+                  onTogglePublish={() => handleTogglePublish(lesson)}
+                  deletingId={deletingId}
+                  togglingId={togglingId}
+                  onUpload={(files) => handleUpload(lesson.id, files)}
+                  onDeleteResource={handleDeleteResource}
+                  subjectRecurringMeetingUrl={subjectRecurringMeetingUrl}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
 
-      {classLessons.length === 0 ? (
-        <Card>
-          <CardContent className="flex flex-col items-center justify-center py-12">
-            <Video className="h-12 w-12 text-muted-foreground mb-4" />
-            <p className="text-muted-foreground text-lg mb-2">No classes yet</p>
-            <p className="text-sm text-muted-foreground mb-4 text-center max-w-md">
-              Add the first class — name it by date (e.g. &ldquo;27 Apr 2026&rdquo;) or by
-              topic (e.g. &ldquo;Surah Al-Fatihah — Tafseer&rdquo;). You can include the
-              live link, recording, and resource files.
-            </p>
-            <Button onClick={handleAddNew}>
-              <Plus className="h-4 w-4 mr-1.5" />
-              Add First Class
-            </Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="space-y-3">
-          {classLessons.map((lesson, idx) => {
-            const isExpanded = expandedId === lesson.id;
-            const status = getClassStatus(lesson);
-            const StatusIcon = status.icon;
-            const lessonResources = resources.filter(
-              (r) => r.lesson_id === lesson.id
-            );
-            return (
-              <ClassCard
-                key={lesson.id}
-                lesson={lesson}
-                idx={idx}
-                isExpanded={isExpanded}
-                onToggle={() => setExpandedId(isExpanded ? null : lesson.id)}
-                status={status}
-                StatusIcon={StatusIcon}
-                resources={lessonResources}
-                onEdit={() => handleEdit(lesson)}
-                onDelete={() => handleDeleteClass(lesson.id)}
-                onTogglePublish={() => handleTogglePublish(lesson)}
-                deletingId={deletingId}
-                togglingId={togglingId}
-                onUpload={(files) => handleUpload(lesson.id, files)}
-                onDeleteResource={handleDeleteResource}
-                subjectRecurringMeetingUrl={subjectRecurringMeetingUrl}
-              />
-            );
-          })}
-        </div>
+      {/* Delete confirmation — names the recording it is about to lose, the
+          same way the admin structure editor does. */}
+      {pendingDelete && (
+        <CourseConfirmDialog
+          open
+          onOpenChange={(open) => !open && setPendingDelete(null)}
+          title="Delete this class?"
+          confirmLabel={
+            hasRecording(pendingDelete)
+              ? "Delete class and its recording"
+              : "Delete class"
+          }
+          onConfirm={confirmDeleteClass}
+          busy={deletingId === pendingDelete.id}
+        >
+          <p>
+            <strong className="text-foreground">
+              &ldquo;{pendingDelete.title}&rdquo;
+            </strong>{" "}
+            and its attached resources will be deleted. This cannot be undone.
+          </p>
+          {hasRecording(pendingDelete) && (
+            <div className="rounded-lg border border-amber-300 bg-amber-50 p-3 text-amber-900 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+              <p className="font-semibold">
+                This class has a recording. It will be lost.
+              </p>
+              <p className="mt-1 break-all">{pendingDelete.recording_url}</p>
+              <p className="mt-1">
+                Nisa stores no second copy of this link. Save it somewhere first
+                if students still need it.
+              </p>
+            </div>
+          )}
+        </CourseConfirmDialog>
       )}
     </div>
   );
@@ -462,277 +556,306 @@ function ClassCard({
   const [dragOver, setDragOver] = useState(false);
 
   return (
-    <Card className={!lesson.is_published ? "opacity-80" : ""}>
-      <CardContent className="p-0">
-        {/* Header row — clickable to expand */}
-        <button
-          type="button"
-          onClick={onToggle}
-          className="w-full text-left p-4 hover:bg-muted/30 transition-colors rounded-t-xl"
-        >
-          <div className="flex items-start gap-3">
-            <span className="font-mono text-xs text-muted-foreground w-6 pt-1 shrink-0">
-              {String(idx + 1).padStart(2, "0")}
-            </span>
-            <div className="flex-1 min-w-0">
-              <div className="flex flex-wrap items-center gap-2 mb-1">
-                <h3 className="font-semibold truncate">{lesson.title}</h3>
-                <span
-                  className={`inline-flex items-center gap-1 rounded-full border px-2 py-0.5 text-[11px] font-medium ${status.tone}`}
-                >
-                  <StatusIcon className="h-3 w-3" />
-                  {status.label}
-                </span>
-                {!lesson.is_published && (
-                  <Badge variant="outline" className="text-[10px]">
-                    Hidden
-                  </Badge>
+    <div className={cn(courseCard, !lesson.is_published && "opacity-80")}>
+      {/* Header row — clickable to expand */}
+      <button
+        type="button"
+        onClick={onToggle}
+        aria-expanded={isExpanded}
+        className="w-full cursor-pointer px-[18px] py-[15px] text-left"
+      >
+        <div className="flex items-start gap-3">
+          {/* The mockup's numbered square. */}
+          <span className="mt-0.5 flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-lg bg-rose-50 text-xs font-bold text-rose-600 tabular-nums dark:bg-rose-950/50 dark:text-rose-300">
+            {idx + 1}
+          </span>
+          <div className="min-w-0 flex-1">
+            <div className="mb-1 flex flex-wrap items-center gap-2">
+              <h3 className="font-heading truncate text-[15px] font-semibold">
+                {lesson.title}
+              </h3>
+              <span
+                className={cn(
+                  pillBase,
+                  pillTones[status.tone],
+                  "inline-flex items-center gap-1"
                 )}
-              </div>
-              <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
-                {lesson.scheduled_at && (
-                  <span className="flex items-center gap-1">
-                    <Calendar className="h-3 w-3" />
-                    {new Date(lesson.scheduled_at).toLocaleString("en-PK", {
-                      timeZone: "Asia/Karachi",
-                      weekday: "short",
-                      day: "numeric",
-                      month: "short",
-                      year: "numeric",
-                      hour: "2-digit",
-                      minute: "2-digit",
-                    })}{" "}
-                    PKT
-                  </span>
-                )}
-                <span className="flex items-center gap-1">
-                  <FileText className="h-3 w-3" />
-                  {resources.length} resource
-                  {resources.length === 1 ? "" : "s"}
-                </span>
-              </div>
+              >
+                <StatusIcon className="h-3 w-3" />
+                {status.label}
+              </span>
+              {!lesson.is_published && (
+                <span className={cn(pillBase, pillTones.muted)}>Hidden</span>
+              )}
             </div>
-            {isExpanded ? (
-              <ChevronUp className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
-            ) : (
-              <ChevronDown className="h-4 w-4 text-muted-foreground shrink-0 mt-1" />
-            )}
+            <div className="flex flex-wrap items-center gap-3 text-xs text-muted-foreground">
+              {lesson.scheduled_at && (
+                <span className="flex items-center gap-1">
+                  <Calendar className="h-3 w-3" />
+                  {new Date(lesson.scheduled_at).toLocaleString("en-PK", {
+                    timeZone: "Asia/Karachi",
+                    weekday: "short",
+                    day: "numeric",
+                    month: "short",
+                    year: "numeric",
+                    hour: "2-digit",
+                    minute: "2-digit",
+                  })}{" "}
+                  PKT
+                </span>
+              )}
+              <span className="flex items-center gap-1">
+                <FileText className="h-3 w-3" />
+                {resources.length} resource
+                {resources.length === 1 ? "" : "s"}
+              </span>
+            </div>
           </div>
-        </button>
+          <ChevronDown
+            className={cn(
+              "mt-1 h-4 w-4 shrink-0 text-muted-foreground transition-transform",
+              !isExpanded && "-rotate-90"
+            )}
+          />
+        </div>
+      </button>
 
-        {/* Expanded body */}
-        {isExpanded && (
-          <div className="px-4 pb-4 border-t bg-muted/10">
-            {/* Action row — live link / recording / edit / publish / delete */}
-            <div className="flex flex-wrap items-center gap-2 pt-3 mb-4">
-              {(() => {
-                // Effective join URL: per-lesson live_class_link wins, else
-                // subject's recurring URL is the fallback.
-                const joinUrl =
-                  lesson.live_class_link ?? subjectRecurringMeetingUrl ?? null;
-                return joinUrl ? (
-                  <a
-                    href={joinUrl}
-                    target="_blank"
-                    rel="noreferrer"
-                    className="inline-flex items-center gap-1.5 rounded-full bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-medium px-3 py-1.5 transition-colors"
-                  >
-                    <Radio className="h-3.5 w-3.5" />
-                    Join live class
-                    <ExternalLink className="h-3 w-3" />
-                  </a>
-                ) : (
-                  <span className="inline-flex items-center gap-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium px-3 py-1.5">
-                    No live link set
-                  </span>
-                );
-              })()}
-
-              {/* Recording link — pill button only when URL is set AND
-                  not a YouTube URL. YouTube URLs render as a collapsible
-                  embed in a separate row below. */}
-              {lesson.recording_url && !isYouTubeUrl(lesson.recording_url) && (
+      {/* Expanded body */}
+      {isExpanded && (
+        <div className={cn("border-t px-[18px] pb-4", HAIRLINE)}>
+          {/* Action row — live link / recording / edit / publish / delete */}
+          <div className="mb-4 flex flex-wrap items-center gap-2 pt-3.5">
+            {(() => {
+              // Effective join URL: per-lesson live_class_link wins, else
+              // subject's recurring URL is the fallback.
+              const joinUrl =
+                lesson.live_class_link ?? subjectRecurringMeetingUrl ?? null;
+              return joinUrl ? (
                 <a
-                  href={lesson.recording_url}
+                  href={joinUrl}
                   target="_blank"
                   rel="noreferrer"
-                  className="inline-flex items-center gap-1.5 rounded-full bg-primary hover:bg-primary/90 text-primary-foreground text-xs font-medium px-3 py-1.5 transition-colors"
+                  className={cn(
+                    courseButtonPrimary,
+                    "border-sage-700 bg-sage-700 hover:border-sage-700/90 hover:bg-sage-700/90 dark:border-emerald-700 dark:bg-emerald-700"
+                  )}
                 >
-                  <PlayCircle className="h-3.5 w-3.5" />
-                  Watch recording
+                  <Radio className="h-3.5 w-3.5" />
+                  Join live class
                   <ExternalLink className="h-3 w-3" />
                 </a>
-              )}
-              {!lesson.recording_url && (
-                <span className="inline-flex items-center gap-1.5 rounded-full bg-muted text-muted-foreground text-xs font-medium px-3 py-1.5">
-                  No recording yet
-                </span>
-              )}
-
-              <div className="ml-auto flex items-center gap-1">
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={onTogglePublish}
-                  disabled={togglingId === lesson.id}
-                  title={lesson.is_published ? "Hide from students" : "Publish"}
-                >
-                  {togglingId === lesson.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : lesson.is_published ? (
-                    <EyeOff className="h-3.5 w-3.5" />
-                  ) : (
-                    <Eye className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={onEdit}
-                  title="Edit class"
-                >
-                  <Pencil className="h-3.5 w-3.5" />
-                </Button>
-                <Button
-                  variant="ghost"
-                  size="icon-sm"
-                  onClick={onDelete}
-                  disabled={deletingId === lesson.id}
-                  title="Delete class"
-                  className="text-muted-foreground hover:text-destructive"
-                >
-                  {deletingId === lesson.id ? (
-                    <Loader2 className="h-3.5 w-3.5 animate-spin" />
-                  ) : (
-                    <Trash2 className="h-3.5 w-3.5" />
-                  )}
-                </Button>
-              </div>
-            </div>
-
-            {/* Collapsible YouTube embed — full-width row below the
-                action buttons. Iframe is mounted lazily on click so the
-                URL never leaks into the initial DOM. */}
-            {lesson.recording_url && isYouTubeUrl(lesson.recording_url) && (
-              <div className="mb-4">
-                <RecordingPlayer url={lesson.recording_url} />
-              </div>
-            )}
-
-            {/* Description */}
-            {lesson.description && (
-              <p className="text-sm text-muted-foreground mb-4 whitespace-pre-line">
-                {lesson.description}
-              </p>
-            )}
-
-            {/* Resources section */}
-            <div>
-              <h4 className="text-xs font-semibold uppercase tracking-wider text-muted-foreground mb-2">
-                Resources
-              </h4>
-
-              <div
-                onDragOver={(e) => {
-                  e.preventDefault();
-                  setDragOver(true);
-                }}
-                onDragLeave={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                }}
-                onDrop={(e) => {
-                  e.preventDefault();
-                  setDragOver(false);
-                  if (e.dataTransfer.files.length > 0) {
-                    onUpload(e.dataTransfer.files);
-                  }
-                }}
-                onClick={() => fileInputRef.current?.click()}
-                className={`cursor-pointer rounded-lg border-2 border-dashed p-3 text-center transition-colors mb-3 ${
-                  dragOver
-                    ? "border-primary bg-primary/5"
-                    : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
-                }`}
-              >
-                <input
-                  ref={fileInputRef}
-                  type="file"
-                  multiple
-                  className="hidden"
-                  accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.webp,.pptx,.xlsx,.mp3,.mp4"
-                  onChange={(e) => {
-                    if (e.target.files) onUpload(e.target.files);
-                    e.target.value = "";
-                  }}
-                />
-                <div className="flex items-center justify-center gap-2 text-sm">
-                  <Upload className="h-4 w-4 text-primary" />
-                  <span>
-                    Drop files here or{" "}
-                    <span className="text-primary font-medium">browse</span> · max
-                    10MB each
-                  </span>
-                </div>
-              </div>
-
-              {resources.length > 0 ? (
-                <div className="space-y-2">
-                  {resources.map((r) => {
-                    const isLink = isExternalUrl(r.file_url);
-                    const Icon = isLink ? Globe : getFileIcon(r.title);
-                    return (
-                      <div
-                        key={r.id}
-                        className="flex items-center gap-3 rounded-lg border bg-background p-2.5"
-                      >
-                        <div className="h-8 w-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                          <Icon className="h-4 w-4 text-primary" />
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-medium truncate">
-                            {r.title}
-                          </p>
-                          <p className="text-xs text-muted-foreground truncate">
-                            {isLink ? (
-                              <>
-                                <span className="text-primary font-medium">
-                                  External link
-                                </span>{" "}
-                                · {new URL(r.file_url).hostname}
-                              </>
-                            ) : (
-                              <>
-                                {formatFileSize(r.file_size)} ·{" "}
-                                <span className="uppercase">{r.file_type}</span>
-                              </>
-                            )}
-                          </p>
-                        </div>
-                        <ResourceLink path={r.file_url} fileName={r.title} />
-                        <Button
-                          variant="ghost"
-                          size="icon-sm"
-                          onClick={() => onDeleteResource(r)}
-                          className="text-muted-foreground hover:text-destructive shrink-0"
-                          title="Delete resource"
-                        >
-                          <Trash2 className="h-3.5 w-3.5" />
-                        </Button>
-                      </div>
-                    );
-                  })}
-                </div>
               ) : (
-                <p className="text-xs text-muted-foreground italic">
-                  No resources uploaded yet.
-                </p>
-              )}
+                <span className={courseTag}>No live link set</span>
+              );
+            })()}
+
+            {/* Recording link — pill button only when URL is set AND
+                not a YouTube URL. YouTube URLs render as a collapsible
+                embed in a separate row below. */}
+            {lesson.recording_url && !isYouTubeUrl(lesson.recording_url) && (
+              <a
+                href={lesson.recording_url}
+                target="_blank"
+                rel="noreferrer"
+                className={courseButton}
+              >
+                <PlayCircle className="h-3.5 w-3.5" />
+                Watch recording
+                <ExternalLink className="h-3 w-3" />
+              </a>
+            )}
+            {!lesson.recording_url && (
+              <span className={courseTag}>No recording yet</span>
+            )}
+
+            <div className="ml-auto flex items-center gap-1">
+              <button
+                type="button"
+                className={courseIconButton}
+                onClick={onTogglePublish}
+                disabled={togglingId === lesson.id}
+                aria-label={
+                  lesson.is_published
+                    ? `Hide ${lesson.title} from students`
+                    : `Publish ${lesson.title}`
+                }
+                title={lesson.is_published ? "Hide from students" : "Publish"}
+              >
+                {togglingId === lesson.id ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : lesson.is_published ? (
+                  <EyeOff className="h-3.5 w-3.5" />
+                ) : (
+                  <Eye className="h-3.5 w-3.5" />
+                )}
+              </button>
+              <button
+                type="button"
+                className={courseIconButton}
+                onClick={onEdit}
+                aria-label={`Edit ${lesson.title}`}
+                title="Edit class"
+              >
+                <Pencil className="h-3.5 w-3.5" />
+              </button>
+              <button
+                type="button"
+                className={cn(courseIconButton, courseButtonDanger)}
+                onClick={onDelete}
+                disabled={deletingId === lesson.id}
+                aria-label={`Delete ${lesson.title}`}
+                title="Delete class"
+              >
+                {deletingId === lesson.id ? (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                ) : (
+                  <Trash2 className="h-3.5 w-3.5" />
+                )}
+              </button>
             </div>
           </div>
+
+          {/* Collapsible YouTube embed — full-width row below the
+              action buttons. Iframe is mounted lazily on click so the
+              URL never leaks into the initial DOM. */}
+          {lesson.recording_url && isYouTubeUrl(lesson.recording_url) && (
+            <div className="mb-4">
+              <RecordingPlayer url={lesson.recording_url} />
+            </div>
+          )}
+
+          {/* Description */}
+          {lesson.description && (
+            <p className="mb-4 text-sm whitespace-pre-line text-muted-foreground">
+              {lesson.description}
+            </p>
+          )}
+
+          {/* Resources section */}
+          <div>
+            <h4 className={cn(SECTION_LABEL, "mb-2")}>
+              <FileText className="h-3.5 w-3.5 text-rose-500 dark:text-rose-300" />
+              Resources
+            </h4>
+
+            <div
+              onDragOver={(e) => {
+                e.preventDefault();
+                setDragOver(true);
+              }}
+              onDragLeave={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                setDragOver(false);
+                if (e.dataTransfer.files.length > 0) {
+                  onUpload(e.dataTransfer.files);
+                }
+              }}
+              onClick={() => fileInputRef.current?.click()}
+              className={cn(
+                DROP_ZONE,
+                dragOver ? DROP_ZONE_OVER : DROP_ZONE_IDLE
+              )}
+            >
+              <input
+                ref={fileInputRef}
+                type="file"
+                multiple
+                className="hidden"
+                accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.webp,.pptx,.xlsx,.mp3,.mp4"
+                onChange={(e) => {
+                  if (e.target.files) onUpload(e.target.files);
+                  e.target.value = "";
+                }}
+              />
+              <div className="flex items-center justify-center gap-2 text-sm">
+                <Upload className="h-4 w-4 text-rose-500 dark:text-rose-300" />
+                <span>
+                  Drop files here or{" "}
+                  <span className="font-medium text-rose-700 dark:text-rose-300">
+                    browse
+                  </span>{" "}
+                  · max 10MB each
+                </span>
+              </div>
+            </div>
+
+            {resources.length > 0 ? (
+              <div className="space-y-2">
+                {resources.map((r) => (
+                  <ResourceRow
+                    key={r.id}
+                    resource={r}
+                    onDelete={() => onDeleteResource(r)}
+                  />
+                ))}
+              </div>
+            ) : (
+              <p className="text-xs text-muted-foreground italic">
+                No resources uploaded yet.
+              </p>
+            )}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ─── Resource row ───────────────────────────────────────────
+
+function ResourceRow({
+  resource,
+  onDelete,
+}: {
+  resource: Resource;
+  onDelete: () => void;
+}) {
+  const isLink = isExternalUrl(resource.file_url);
+  return (
+    <div
+      className={cn("flex items-center gap-3 rounded-[10px] border p-2.5", HAIRLINE)}
+    >
+      <div
+        className={cn(
+          "flex h-8 w-8 shrink-0 items-center justify-center rounded-lg",
+          iconTints.brand
         )}
-      </CardContent>
-    </Card>
+      >
+        {resourceGlyph(resource)}
+      </div>
+      <div className="min-w-0 flex-1">
+        <p className="truncate text-[13.5px] font-medium">{resource.title}</p>
+        <p className="truncate text-xs text-muted-foreground">
+          {isLink ? (
+            <>
+              <span className="font-medium text-rose-700 dark:text-rose-300">
+                External link
+              </span>{" "}
+              · {new URL(resource.file_url).hostname}
+            </>
+          ) : (
+            <>
+              {formatFileSize(resource.file_size)} ·{" "}
+              <span className="uppercase">{resource.file_type}</span>
+            </>
+          )}
+        </p>
+      </div>
+      <ResourceLink path={resource.file_url} fileName={resource.title} />
+      <button
+        type="button"
+        className={cn(courseIconButton, courseButtonDanger, "shrink-0")}
+        onClick={onDelete}
+        aria-label={`Delete ${resource.title}`}
+        title="Delete resource"
+      >
+        <Trash2 className="h-3.5 w-3.5" />
+      </button>
+    </div>
   );
 }
 
@@ -795,12 +918,13 @@ function ResourceLink({ path, fileName }: { path: string; fileName?: string }) {
   }
 
   return (
-    <div className="flex items-center gap-1 shrink-0">
-      <Button
-        variant="ghost"
-        size="icon-sm"
+    <div className="flex shrink-0 items-center gap-1">
+      <button
+        type="button"
+        className={courseIconButton}
         onClick={handleOpen}
         disabled={busy !== null}
+        aria-label={external ? "Open link in new tab" : "Open in new tab"}
         title={external ? "Open link in new tab" : "Open in new tab"}
       >
         {busy === "open" ? (
@@ -808,13 +932,14 @@ function ResourceLink({ path, fileName }: { path: string; fileName?: string }) {
         ) : (
           <ExternalLink className="h-3.5 w-3.5" />
         )}
-      </Button>
+      </button>
       {!external && (
-        <Button
-          variant="ghost"
-          size="icon-sm"
+        <button
+          type="button"
+          className={courseIconButton}
           onClick={handleDownload}
           disabled={busy !== null}
+          aria-label="Download"
           title="Download"
         >
           {busy === "download" ? (
@@ -822,7 +947,7 @@ function ResourceLink({ path, fileName }: { path: string; fileName?: string }) {
           ) : (
             <Download className="h-3.5 w-3.5" />
           )}
-        </Button>
+        </button>
       )}
     </div>
   );
@@ -866,186 +991,153 @@ function ResourcesSection({
   }
 
   return (
-    <div className="mb-6">
-      <div className="flex items-center justify-between mb-3">
-        <h2 className="font-heading font-semibold text-lg flex items-center gap-2">
-          <FileText className="h-5 w-5 text-primary" />
-          Resources
-          {resources.length > 0 && (
-            <span className="text-sm font-normal text-muted-foreground">
-              ({resources.length})
-            </span>
-          )}
-        </h2>
-      </div>
+    <div>
+      <h2 className="font-heading mb-3 flex items-center gap-2 text-[15px] font-bold">
+        <FileText className="h-4 w-4 text-rose-500 dark:text-rose-300" />
+        Resources
+        {resources.length > 0 && (
+          <span className="text-sm font-normal text-muted-foreground">
+            ({resources.length})
+          </span>
+        )}
+      </h2>
 
-      <Card>
-        <CardContent className="p-4">
-          {/* Upload zone — only enabled when a holder lesson exists */}
-          {uploadLessonId ? (
-            <div
-              onDragOver={(e) => {
-                e.preventDefault();
-                setDragOver(true);
+      <div className={cn(courseCard, "p-4")}>
+        {/* Upload zone — only enabled when a holder lesson exists */}
+        {uploadLessonId ? (
+          <div
+            onDragOver={(e) => {
+              e.preventDefault();
+              setDragOver(true);
+            }}
+            onDragLeave={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+            }}
+            onDrop={(e) => {
+              e.preventDefault();
+              setDragOver(false);
+              if (e.dataTransfer.files.length > 0) {
+                onUpload(e.dataTransfer.files);
+              }
+            }}
+            onClick={() => fileInputRef.current?.click()}
+            className={cn(DROP_ZONE, dragOver ? DROP_ZONE_OVER : DROP_ZONE_IDLE)}
+          >
+            <input
+              ref={fileInputRef}
+              type="file"
+              multiple
+              className="hidden"
+              accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.webp,.pptx,.xlsx,.mp3,.mp4"
+              onChange={(e) => {
+                if (e.target.files) onUpload(e.target.files);
+                e.target.value = "";
               }}
-              onDragLeave={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-              }}
-              onDrop={(e) => {
-                e.preventDefault();
-                setDragOver(false);
-                if (e.dataTransfer.files.length > 0) {
-                  onUpload(e.dataTransfer.files);
-                }
-              }}
-              onClick={() => fileInputRef.current?.click()}
-              className={`cursor-pointer rounded-lg border-2 border-dashed p-3 text-center transition-colors mb-3 ${
-                dragOver
-                  ? "border-primary bg-primary/5"
-                  : "border-muted-foreground/25 hover:border-primary/50 hover:bg-muted/30"
-              }`}
+            />
+            <div className="flex items-center justify-center gap-2 text-sm">
+              <Upload className="h-4 w-4 text-rose-500 dark:text-rose-300" />
+              <span>
+                Drop files here or{" "}
+                <span className="font-medium text-rose-700 dark:text-rose-300">
+                  browse
+                </span>{" "}
+                · max 50MB each · students can download
+              </span>
+            </div>
+          </div>
+        ) : null}
+
+        {/* Add link — for files too big for Storage (e.g. Drive PDFs). */}
+        {uploadLessonId ? (
+          showLinkForm ? (
+            <form
+              onSubmit={submitLink}
+              className={cn(
+                "mb-3 space-y-2 rounded-[10px] border bg-rose-50/40 p-3 dark:bg-rose-950/20",
+                HAIRLINE
+              )}
             >
-              <input
-                ref={fileInputRef}
-                type="file"
-                multiple
-                className="hidden"
-                accept=".pdf,.doc,.docx,.txt,.png,.jpg,.jpeg,.webp,.pptx,.xlsx,.mp3,.mp4"
-                onChange={(e) => {
-                  if (e.target.files) onUpload(e.target.files);
-                  e.target.value = "";
-                }}
-              />
-              <div className="flex items-center justify-center gap-2 text-sm">
-                <Upload className="h-4 w-4 text-primary" />
-                <span>
-                  Drop files here or{" "}
-                  <span className="text-primary font-medium">browse</span> · max
-                  50MB each · students can download
-                </span>
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <Link2 className="h-4 w-4 text-rose-500 dark:text-rose-300" />
+                Add an external link
               </div>
-            </div>
-          ) : null}
-
-          {/* Add link — for files too big for Storage (e.g. Drive PDFs). */}
-          {uploadLessonId ? (
-            showLinkForm ? (
-              <form
-                onSubmit={submitLink}
-                className="rounded-lg border bg-muted/20 p-3 mb-3 space-y-2"
-              >
-                <div className="flex items-center gap-2 text-sm font-medium">
-                  <Link2 className="h-4 w-4 text-primary" />
-                  Add an external link
-                </div>
-                <Input
-                  placeholder="Title (e.g. Tafseer Ibn Kathir — English)"
-                  value={linkTitle}
-                  onChange={(e) => setLinkTitle(e.target.value)}
-                  required
-                />
-                <Input
-                  type="url"
-                  placeholder="https://drive.google.com/..."
-                  value={linkUrl}
-                  onChange={(e) => setLinkUrl(e.target.value)}
-                  required
-                />
-                <div className="flex items-center justify-end gap-2 pt-1">
-                  <Button
-                    type="button"
-                    variant="ghost"
-                    size="sm"
-                    onClick={() => {
-                      setShowLinkForm(false);
-                      setLinkTitle("");
-                      setLinkUrl("");
-                    }}
-                  >
-                    Cancel
-                  </Button>
-                  <Button type="submit" size="sm" disabled={savingLink}>
-                    {savingLink ? (
-                      <>
-                        <Loader2 className="h-3.5 w-3.5 animate-spin mr-1.5" />
-                        Adding…
-                      </>
-                    ) : (
-                      "Add link"
-                    )}
-                  </Button>
-                </div>
-                <p className="text-[11px] text-muted-foreground">
-                  Tip: paste a Google Drive share link (set the file&apos;s
-                  visibility to <em>Anyone with link · Viewer</em> first).
-                </p>
-              </form>
-            ) : (
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => setShowLinkForm(true)}
-                className="mb-3"
-              >
-                <Link2 className="h-3.5 w-3.5 mr-1.5" />
-                Add link (for big files / external resources)
-              </Button>
-            )
-          ) : null}
-
-          {resources.length > 0 ? (
-            <div className="space-y-2">
-              {resources.map((r) => {
-                const isLink = isExternalUrl(r.file_url);
-                const Icon = isLink ? Globe : getFileIcon(r.title);
-                return (
-                  <div
-                    key={r.id}
-                    className="flex items-center gap-3 rounded-lg border bg-background p-2.5"
-                  >
-                    <div className="h-8 w-8 rounded-lg bg-secondary flex items-center justify-center shrink-0">
-                      <Icon className="h-4 w-4 text-primary" />
-                    </div>
-                    <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium truncate">{r.title}</p>
-                      <p className="text-xs text-muted-foreground truncate">
-                        {isLink ? (
-                          <>
-                            <span className="text-primary font-medium">
-                              External link
-                            </span>{" "}
-                            · {new URL(r.file_url).hostname}
-                          </>
-                        ) : (
-                          <>
-                            {formatFileSize(r.file_size)} ·{" "}
-                            <span className="uppercase">{r.file_type}</span>
-                          </>
-                        )}
-                      </p>
-                    </div>
-                    <ResourceLink path={r.file_url} fileName={r.title} />
-                    <Button
-                      variant="ghost"
-                      size="icon-sm"
-                      onClick={() => onDeleteResource(r)}
-                      className="text-muted-foreground hover:text-destructive shrink-0"
-                      title="Delete resource"
-                    >
-                      <Trash2 className="h-3.5 w-3.5" />
-                    </Button>
-                  </div>
-                );
-              })}
-            </div>
+              <Input
+                placeholder="Title (e.g. Tafseer Ibn Kathir — English)"
+                value={linkTitle}
+                onChange={(e) => setLinkTitle(e.target.value)}
+                required
+              />
+              <Input
+                type="url"
+                placeholder="https://drive.google.com/..."
+                value={linkUrl}
+                onChange={(e) => setLinkUrl(e.target.value)}
+                required
+              />
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <button
+                  type="button"
+                  className={cn(courseButton, "cursor-pointer")}
+                  onClick={() => {
+                    setShowLinkForm(false);
+                    setLinkTitle("");
+                    setLinkUrl("");
+                  }}
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={savingLink}
+                  className={cn(
+                    courseButtonPrimary,
+                    "cursor-pointer disabled:cursor-not-allowed disabled:opacity-60"
+                  )}
+                >
+                  {savingLink ? (
+                    <>
+                      <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                      Adding…
+                    </>
+                  ) : (
+                    "Add link"
+                  )}
+                </button>
+              </div>
+              <p className="text-[11px] text-muted-foreground">
+                Tip: paste a Google Drive share link (set the file&apos;s
+                visibility to <em>Anyone with link · Viewer</em> first).
+              </p>
+            </form>
           ) : (
-            <p className="text-sm text-muted-foreground italic">
-              No resources yet. Upload files or add a link above.
-            </p>
-          )}
-        </CardContent>
-      </Card>
+            <button
+              type="button"
+              onClick={() => setShowLinkForm(true)}
+              className={cn(courseButton, "mb-3 cursor-pointer")}
+            >
+              <Link2 className="h-3.5 w-3.5" />
+              Add link (for big files / external resources)
+            </button>
+          )
+        ) : null}
+
+        {resources.length > 0 ? (
+          <div className="space-y-2">
+            {resources.map((r) => (
+              <ResourceRow
+                key={r.id}
+                resource={r}
+                onDelete={() => onDeleteResource(r)}
+              />
+            ))}
+          </div>
+        ) : (
+          <p className="text-sm text-muted-foreground italic">
+            No resources yet. Upload files or add a link above.
+          </p>
+        )}
+      </div>
     </div>
   );
 }
