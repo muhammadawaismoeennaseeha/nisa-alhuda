@@ -3,9 +3,10 @@
 /**
  * The Edit / Archive / Delete row in the course workspace header.
  *
- * Split out of `course-workspace` because it's the only part of the workspace
- * that writes: the rest of the screen is a read-only projection of three
- * SELECTs. Archive flips `offerings.status`, exactly as the offerings list's
+ * Split out of `course-workspace` because it owns the header's writes: Edit
+ * switches to the Details tab (the offering form, in-page), and the rest of
+ * the screen is a projection of the page's SELECTs. Archive flips
+ * `offerings.status`, exactly as the offerings list's
  * archive control does; Delete reuses that list's `DeleteOffering` — same
  * confirmation copy, same mutation — rather than growing a second delete path.
  *
@@ -28,8 +29,11 @@ import type { Offering } from "@/lib/types/database";
 
 export function CourseHeaderActions({
   offering,
+  onEdit,
 }: {
   offering: Pick<Offering, "id" | "title" | "slug" | "status">;
+  /** Opens the workspace's Details tab — editing no longer leaves the page. */
+  onEdit: () => void;
 }) {
   const router = useRouter();
   const [archiving, setArchiving] = useState(false);
@@ -67,13 +71,14 @@ export function CourseHeaderActions({
         View
       </Link>
 
-      <Link
-        href={`/dashboard/admin/offerings/${offering.id}/edit`}
-        className={courseButton}
+      <button
+        type="button"
+        onClick={onEdit}
+        className={cn(courseButton, "cursor-pointer")}
       >
         <Pencil className="h-4 w-4" />
         Edit
-      </Link>
+      </button>
 
       <button
         type="button"

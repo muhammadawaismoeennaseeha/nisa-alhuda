@@ -1,9 +1,11 @@
 /**
  * Admin course workspace — tab rendering.
  *
- * Overview server-renders, but People, Course Structure and Schedule are behind
- * client tab state, so nothing but a click proves they render. This covers all
- * four, and pins the one guarantee that matters most: the structure view
+ * Overview server-renders, but People, Course Structure, Schedule and Details
+ * are behind client tab state, so nothing but a click proves they render. This
+ * covers all five, pins the two capabilities folded in from the retired
+ * standalone screens (the enrol control on People, the offering form on
+ * Details), and pins the guarantee that matters most: the structure view
  * surfaces a lesson's recording as a read-only indicator and offers no control
  * that could clear it.
  */
@@ -126,7 +128,9 @@ const ROSTER: RosterEnrollment[] = [
   },
 ];
 
-function renderWorkspace() {
+function renderWorkspace(
+  props: Partial<React.ComponentProps<typeof CourseWorkspace>> = {}
+) {
   return render(
     <CourseWorkspace
       offering={OFFERING}
@@ -134,6 +138,7 @@ function renderWorkspace() {
       subjects={[{ ...SUBJECT, instructor: { full_name: "Ustadha Maryam" } }]}
       lessons={LESSONS}
       roster={ROSTER}
+      {...props}
     />
   );
 }
@@ -170,7 +175,7 @@ describe("CourseWorkspace", () => {
     expect(screen.getByText("Fiqh of Worship")).toBeInTheDocument();
   });
 
-  it("shows the roster on People", async () => {
+  it("shows the roster on People, with the intake fields and the enrol control", async () => {
     const user = userEvent.setup();
     renderWorkspace();
 
@@ -181,6 +186,33 @@ describe("CourseWorkspace", () => {
     expect(screen.getAllByText("Aisha Fatima")).toHaveLength(2);
     expect(screen.getAllByText("aisha@example.com")).toHaveLength(2);
     expect(screen.getAllByText("Lahore, Pakistan")).toHaveLength(2);
+    // Folded in from the retired students page: the intake columns it showed…
+    expect(screen.getAllByText("0300-1234567")).toHaveLength(2);
+    expect(screen.getAllByText("Undergraduate")).toHaveLength(2);
+    // …and its enrol dialog, inline rather than a link off the page.
+    const add = screen.getByRole("button", { name: /Add people/ });
+    expect(add.closest("a")).toBeNull();
+  });
+
+  it("renders the offering form on Details", async () => {
+    const user = userEvent.setup();
+    renderWorkspace();
+
+    await user.click(tab("Details"));
+
+    expect(
+      screen.getByDisplayValue("Sisterhood Islamic Studies")
+    ).toBeInTheDocument();
+    expect(
+      screen.getByRole("button", { name: "Save Changes" })
+    ).toBeInTheDocument();
+  });
+
+  it("opens on the tab named by initialTab", () => {
+    renderWorkspace({ initialTab: "people" });
+
+    expect(tab("People")).toHaveAttribute("aria-selected", "true");
+    expect(screen.getAllByText("Aisha Fatima")).toHaveLength(2);
   });
 
   it("lists lessons under their subject and flags recordings read-only", async () => {

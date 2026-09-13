@@ -62,6 +62,17 @@ interface OfferingFormProps {
    * verbatim on save (the inputs render but stay at their initial state).
    */
   hideFinance?: boolean;
+  /**
+   * Where Cancel goes and where a successful save lands. Defaults to the
+   * offerings list; the course workspace points it back at itself so editing
+   * doesn't bounce the admin out of the course they're working on.
+   */
+  returnHref?: string;
+  /**
+   * The "Back to Offerings" link. Off when the form is embedded in a screen
+   * that already has its own back affordance.
+   */
+  showBackLink?: boolean;
 }
 
 function generateSlug(title: string): string {
@@ -78,6 +89,8 @@ export function OfferingForm({
   existingSubjects = [],
   instructors = [],
   hideFinance = false,
+  returnHref = "/dashboard/admin/offerings",
+  showBackLink = true,
 }: OfferingFormProps) {
   const router = useRouter();
   const isEditing = !!offering;
@@ -368,7 +381,7 @@ export function OfferingForm({
       toast.success(
         isEditing ? "Offering updated!" : "Offering created!"
       );
-      router.push("/dashboard/admin/offerings");
+      router.push(returnHref);
       router.refresh();
     } catch (error) {
       toast.error(
@@ -384,14 +397,16 @@ export function OfferingForm({
   return (
     <form onSubmit={handleSubmit} className="space-y-6 max-w-3xl">
       {/* Back Link */}
-      <LinkButton
-        variant="ghost"
-        href="/dashboard/admin/offerings"
-        className="mb-2"
-      >
-        <ArrowLeft className="h-4 w-4 mr-1.5" />
-        Back to Offerings
-      </LinkButton>
+      {showBackLink && (
+        <LinkButton
+          variant="ghost"
+          href="/dashboard/admin/offerings"
+          className="mb-2"
+        >
+          <ArrowLeft className="h-4 w-4 mr-1.5" />
+          Back to Offerings
+        </LinkButton>
+      )}
 
       {/* ─── Basic Info ─────────────────────────────────── */}
       <Card>
@@ -890,10 +905,7 @@ export function OfferingForm({
 
       {/* ─── Actions ────────────────────────────────────── */}
       <div className="flex items-center justify-between pt-2">
-        <LinkButton
-          variant="outline"
-          href="/dashboard/admin/offerings"
-        >
+        <LinkButton variant="outline" href={returnHref}>
           Cancel
         </LinkButton>
 

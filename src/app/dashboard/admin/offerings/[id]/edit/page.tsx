@@ -1,12 +1,12 @@
 /**
- * Edit Offering Page — admin edits an existing offering.
+ * Retired route — the offering form now lives on the workspace's Details tab.
+ *
+ * The page shell is gone, not the form: `OfferingForm` (in
+ * `../../offering-form`) is rendered by `course-workspace`, with the same
+ * props, the same validation and the same save path. Old bookmarks and any
+ * stale link land on that tab instead of a 404.
  */
-import { notFound } from "next/navigation";
-import { Pencil } from "lucide-react";
-import { createClient } from "@/lib/supabase/server";
-import { PageHeader } from "@/components/dashboard/page-header";
-import { OfferingForm } from "../../offering-form";
-import type { Offering, Subject } from "@/lib/types/database";
+import { redirect } from "next/navigation";
 
 export default async function EditOfferingPage({
   params,
@@ -14,64 +14,5 @@ export default async function EditOfferingPage({
   params: Promise<{ id: string }>;
 }) {
   const { id } = await params;
-  const supabase = await createClient();
-
-  // Fetch the offering
-  const { data: offering } = await supabase
-    .from("offerings")
-    .select("*")
-    .eq("id", id)
-    .single<Offering>();
-
-  if (!offering) notFound();
-
-  // Viewer role drives the hideFinance flag passed into OfferingForm.
-  const {
-    data: { user },
-  } = await supabase.auth.getUser();
-  const { data: profile } = user
-    ? await supabase
-        .from("profiles")
-        .select("role")
-        .eq("id", user.id)
-        .single()
-    : { data: null };
-  const hideFinance = profile?.role === "instructor";
-
-  // Fetch subjects if it's a program
-  let subjects: Subject[] = [];
-  if (offering.type === "program") {
-    const { data } = await supabase
-      .from("subjects")
-      .select("*")
-      .eq("offering_id", offering.id)
-      .order("sort_order", { ascending: true });
-
-    subjects = (data as Subject[]) || [];
-  }
-
-  // Fetch instructors for the subject assignment dropdown
-  const { data: instructors } = await supabase
-    .from("profiles")
-    .select("id, full_name")
-    .eq("role", "instructor")
-    .order("full_name");
-
-  return (
-    <div>
-      <PageHeader
-        icon={Pencil}
-        eyebrow="Courses"
-        title="Edit offering"
-        subtitle={`Update the details of "${offering.title}".`}
-      />
-
-      <OfferingForm
-        offering={offering}
-        existingSubjects={subjects}
-        instructors={instructors || []}
-        hideFinance={hideFinance}
-      />
-    </div>
-  );
+  redirect(`/dashboard/admin/offerings/${id}/workspace?tab=details`);
 }

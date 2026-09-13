@@ -4,21 +4,31 @@
  * The tabbed shell for the admin course workspace, rendered to the signed-off
  * courses mockup.
  *
- * Tab state is client-side rather than a route segment: all four tabs render
- * from the same queries the page already ran, so making them separate routes
- * would re-fetch the whole course to move between them. The Overview's nav
- * cards drive the same state, which is the point of the layout — Overview is a
- * map of the page, not a separate destination.
+ * This is the only screen for managing an offering: the standalone
+ * /offerings/[id]/edit and /offerings/[id]/students pages are retired and now
+ * redirect here, to `?tab=details` and `?tab=people` respectively. Their
+ * components are not retired — Details renders the very same `OfferingForm`,
+ * and People renders the very same `EnrollDialog` over the same `actions.ts`.
  *
- * Overview, People and Schedule are read-only projections of the page's
- * queries. Course Structure edits in place (`CourseStructureEditor`); its
- * writes go through `@/lib/course-structure`, the same module the instructor
- * subject screen saves through. The per-lesson recording flag stays a plain
- * label with no link and no control — changing a `recording_url` is a
- * deliberate unlock inside the edit dialog and nowhere else.
+ * Tab state is client-side rather than a route segment: every tab renders from
+ * the queries the page already ran, so making them separate routes would
+ * re-fetch the whole course to move between them. `?tab=` seeds the initial tab
+ * (that's what the retired routes redirect into) and each switch rewrites it
+ * with `history.replaceState`, which Next's router picks up without a
+ * re-render. The Overview's nav cards drive the same state, which is the point
+ * of the layout — Overview is a map of the page, not a separate destination.
+ *
+ * Overview, People and Schedule are projections of the page's queries; People
+ * additionally hosts the enrol dialog. Course Structure edits in place
+ * (`CourseStructureEditor`); its writes go through `@/lib/course-structure`,
+ * the same module the instructor subject screen saves through. The per-lesson
+ * recording flag stays a plain label with no link and no control — changing a
+ * `recording_url` is a deliberate unlock inside the edit dialog and nowhere
+ * else.
  */
 import { useMemo, useState } from "react";
 import Link from "next/link";
+import { usePathname } from "next/navigation";
 import {
   BookOpen,
   CalendarClock,
@@ -28,6 +38,8 @@ import {
   Inbox,
   LayoutGrid,
   ListTree,
+  Pencil,
+  UserPlus,
   Users,
   Video,
 } from "lucide-react";
@@ -49,19 +61,22 @@ import {
 import type { InstructorOption } from "@/components/course/subject-dialog";
 import {
   courseButton,
+  courseButtonPrimary,
   courseCard,
 } from "@/components/course/course-surface";
 import { scheduleDisplayLabel } from "@/lib/recurring-schedule";
 import type { Lesson, Offering } from "@/lib/types/database";
+import { OfferingForm } from "../../offering-form";
+import { EnrollDialog } from "../students/enroll-dialog";
 import { CourseHeaderActions } from "./course-header-actions";
-
-type TabKey = "overview" | "people" | "structure" | "schedule";
+import type { TabKey } from "./tabs";
 
 const TABS: readonly CourseTab<TabKey>[] = [
   { key: "overview", label: "Overview", icon: LayoutGrid },
   { key: "people", label: "People", icon: Users },
   { key: "structure", label: "Course Structure", icon: ListTree },
   { key: "schedule", label: "Schedule", icon: CalendarClock },
+  { key: "details", label: "Details", icon: Pencil },
 ];
 
 const MODE_LABELS: Record<Offering["mode"], string> = {
@@ -138,6 +153,8 @@ export function CourseWorkspace({
   pendingCount = 0,
   resourceCounts = {},
   instructors = [],
+  hideFinance = false,
+  initialTab = "overview",
 }: {
   offering: Offering;
   instructorName: string | null;
@@ -150,8 +167,24 @@ export function CourseWorkspace({
   resourceCounts?: Record<string, number>;
   /** Candidates for a subject's required `instructor_id`. */
   instructors?: InstructorOption[];
+  /** Passed straight through to the Details form — hides price and fee type. */
+  hideFinance?: boolean;
+  /** Seeded from `?tab=`; the retired edit/students routes redirect into it. */
+  initialTab?: TabKey;
 }) {
-  const [active, setActive] = useState<TabKey>("overview");
+  const [active, setActive] = useState<TabKey>(initialTab);
+  const pathname = usePathname();
+
+  function selectTab(key: TabKey) {
+    setActive(key);
+    // Keep the URL honest so a refresh, a bookmark or a shared link reopens the
+    // same tab. replaceState rather than router.replace: the tabs render from
+    // data that's already here, and a navigation would re-run every query.
+    if (typeof window !== "undefined" && pathname) {
+      const query = key === "overview" ? "" : `?tab=${key}`;
+      window.history.replaceState(null, "", `${pathname}${query}`);
+    }
+  }
 
   const recordingCount = lessons.filter(
     (l) => l.recording_url && l.recording_url.trim() !== ""
@@ -201,10 +234,15 @@ export function CourseWorkspace({
         context={context}
         description={offering.short_description}
         badges={badges}
-        actions={<CourseHeaderActions offering={offering} />}
+        actions={
+          <CourseHeaderActions
+            offering={offering}
+            onEdit={() => selectTab("details")}
+          />
+        }
       />
 
-      <CourseTabs tabs={TABS} active={active} onChange={setActive} />
+      <CourseTabs tabs={TABS} active={active} onChange={selectTab} />
 
       {active === "overview" && (
         <div className="space-y-4">
@@ -233,20 +271,33 @@ export function CourseWorkspace({
               icon={Users}
               title="People"
               detail={`${roster.length} enrolled`}
-              onClick={() => setActive("people")}
+              onClick={() => selectTab("people")}
             />
             <NavCard
               icon={ListTree}
               title="Course Structure"
               detail={`${plural(subjects.length, "subject")} · ${plural(lessons.length, "lesson")}`}
-              onClick={() => setActive("structure")}
+              onClick={() => selectTab("structure")}
             />
             <NavCard
               icon={CalendarClock}
               title="Schedule"
               detail={scheduleSummary}
-              onClick={() => setActive("schedule")}
+              onClick={() => selectTab("schedule")}
             />
+            <NavCard
+              icon={Pencil}
+              title="Edit details"
+              detail={
+                hideFinance
+                  ? "Title, dates, poster"
+                  : "Title, pricing, dates, poster"
+              }
+              onClick={() => selectTab("details")}
+            />
+            {/* Approving or rejecting a request is the global Enrollments
+                screen's job — this card points at the place that can act on
+                the count, not back at this page's roster. */}
             <LinkCard
               icon={Inbox}
               title="Enrolment requests"
@@ -255,7 +306,7 @@ export function CourseWorkspace({
                   ? "1 awaiting approval"
                   : `${pendingCount} awaiting approval`
               }
-              href={`/dashboard/admin/offerings/${offering.id}/students`}
+              href="/dashboard/admin/enrollments"
             />
           </div>
         </div>
@@ -264,7 +315,20 @@ export function CourseWorkspace({
       {active === "people" && (
         <CourseRoster
           rows={roster}
-          addHref={`/dashboard/admin/offerings/${offering.id}/students`}
+          intakeDetails
+          addAction={
+            <EnrollDialog
+              offeringId={offering.id}
+              offeringTitle={offering.title}
+              triggerClassName={cn(courseButtonPrimary, "cursor-pointer")}
+              triggerLabel={
+                <>
+                  <UserPlus className="h-4 w-4" />
+                  Add people
+                </>
+              }
+            />
+          }
         />
       )}
 
@@ -285,6 +349,34 @@ export function CourseWorkspace({
           subjects={subjects}
           lessons={lessons}
         />
+      )}
+
+      {active === "details" && (
+        <div className={cn(courseCard, "px-[22px] py-5")}>
+          <SectionTitle>
+            <Pencil className="h-4 w-4 text-rose-500" />
+            Offering details
+          </SectionTitle>
+          <p className="mt-0.5 mb-4 text-xs text-muted-foreground">
+            The same form the Edit screen used to hold — every field, same
+            validation, same save.
+          </p>
+          {/* `existingSubjects` only for programs, matching what the retired
+              edit page passed: the form's subject rows are a program feature,
+              and handing them over for a course would render an editor the
+              rest of the form doesn't expect. */}
+          <OfferingForm
+            offering={offering}
+            existingSubjects={offering.type === "program" ? subjects : []}
+            instructors={instructors.map((i) => ({
+              id: i.id,
+              full_name: i.full_name ?? "",
+            }))}
+            hideFinance={hideFinance}
+            returnHref={`/dashboard/admin/offerings/${offering.id}/workspace`}
+            showBackLink={false}
+          />
+        </div>
       )}
     </div>
   );

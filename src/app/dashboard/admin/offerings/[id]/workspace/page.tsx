@@ -1,14 +1,17 @@
 /**
  * Admin course workspace — the Naseeha "Courses" shell over Nisa's data.
  *
- * One course page with a shared header and a four-tab strip (Overview, People,
- * Course Structure, Schedule) instead of the current spread of separate
- * screens. This route is additive: /dashboard/admin/offerings/[id]/edit and
- * .../students still exist and still work.
+ * One course page with a shared header and a five-tab strip (Overview, People,
+ * Course Structure, Schedule, Details) instead of a spread of separate screens.
+ * This is now the only route for managing an offering:
+ * /dashboard/admin/offerings/[id]/edit and .../students are redirects into the
+ * Details and People tabs.
  *
  * Every query in this file is a SELECT. Writes happen in the client components
- * it renders — the header's archive/delete, and the Course Structure editor —
- * and all of them go through `@/lib/course-structure`, which patches named
+ * it renders — the header's archive/delete, the Course Structure editor, the
+ * People tab's enrol dialog and the Details tab's offering form — each through
+ * the module it already used before this screen existed. In particular the
+ * structure editor goes through `@/lib/course-structure`, which patches named
  * columns rather than whole rows so `lessons.recording_url` is never written
  * unless a caller asks for it explicitly.
  */
@@ -22,6 +25,7 @@ import type {
   Subject,
 } from "@/lib/types/database";
 import { CourseWorkspace } from "./course-workspace";
+import { isTabKey } from "./tabs";
 
 type RosterRow = Enrollment & {
   student_details: (StudentDetails & { country?: string }) | null;
@@ -34,10 +38,12 @@ type SubjectWithInstructor = Subject & {
 
 export default async function OfferingWorkspacePage({
   params,
+  searchParams,
 }: {
   params: Promise<{ id: string }>;
+  searchParams: Promise<{ tab?: string }>;
 }) {
-  const { id } = await params;
+  const [{ id }, { tab }] = await Promise.all([params, searchParams]);
   const supabase = await createClient();
 
   const { data: offering } = await supabase
@@ -48,15 +54,22 @@ export default async function OfferingWorkspacePage({
 
   if (!offering) notFound();
 
-  // Subjects, lessons, the roster, the pending-request count and the
-  // instructor list are independent reads — fire them together rather than
-  // paying five sequential round-trips.
+  // The viewer's role drives the Details tab's `hideFinance` flag, exactly as
+  // it did on the edit page: instructors don't see price or fee type.
+  const {
+    data: { user },
+  } = await supabase.auth.getUser();
+
+  // Subjects, lessons, the roster, the pending-request count, the instructor
+  // list and the viewer's profile are independent reads — fire them together
+  // rather than paying six sequential round-trips.
   const [
     subjectsRes,
     lessonsRes,
     enrollmentsRes,
     pendingRes,
     instructorsRes,
+    profileRes,
   ] = await Promise.all([
     supabase
       .from("subjects")
@@ -87,6 +100,9 @@ export default async function OfferingWorkspacePage({
       .select("id, full_name")
       .eq("role", "instructor")
       .order("full_name"),
+    user
+      ? supabase.from("profiles").select("role").eq("id", user.id).single()
+      : Promise.resolve({ data: null }),
   ]);
 
   const subjects = (subjectsRes.data || []) as SubjectWithInstructor[];
@@ -96,6 +112,8 @@ export default async function OfferingWorkspacePage({
     id: string;
     full_name: string | null;
   }[];
+  const hideFinance =
+    (profileRes.data as { role?: string } | null)?.role === "instructor";
 
   // Resource counts need the lesson ids, so this one can't join the batch
   // above. `head: true` per lesson would be N round-trips; one `in` query and
@@ -124,6 +142,8 @@ export default async function OfferingWorkspacePage({
       pendingCount={pendingRes.count ?? 0}
       resourceCounts={resourceCounts}
       instructors={instructors}
+      hideFinance={hideFinance}
+      initialTab={isTabKey(tab) ? tab : "overview"}
     />
   );
 }

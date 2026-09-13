@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * "Manually enroll student" dialog — sits on the course roster page.
+ * "Manually enroll student" dialog — sits on the workspace's People tab.
  *
  * Handles both cases in one form:
  *   - Existing user (matched by email) → links enrollment to their profile.
@@ -27,9 +27,20 @@ import { enrollByEmail } from "./actions";
 interface EnrollDialogProps {
   offeringId: string;
   offeringTitle: string;
+  /** Lets the roster toolbar style the trigger like its other buttons. */
+  triggerClassName?: string;
+  triggerLabel?: React.ReactNode;
 }
 
-export function EnrollDialog({ offeringId, offeringTitle }: EnrollDialogProps) {
+const DEFAULT_TRIGGER_CLASS =
+  "inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors press";
+
+export function EnrollDialog({
+  offeringId,
+  offeringTitle,
+  triggerClassName = DEFAULT_TRIGGER_CLASS,
+  triggerLabel,
+}: EnrollDialogProps) {
   const router = useRouter();
   const [open, setOpen] = useState(false);
   const [email, setEmail] = useState("");
@@ -117,9 +128,13 @@ export function EnrollDialog({ offeringId, offeringTitle }: EnrollDialogProps) {
         if (!v) reset();
       }}
     >
-      <DialogTrigger className="inline-flex items-center justify-center rounded-lg bg-primary px-4 py-2 text-sm font-medium text-primary-foreground hover:bg-primary/90 transition-colors press">
-        <UserPlus className="h-4 w-4 mr-1.5" />
-        Manually enroll student
+      <DialogTrigger className={triggerClassName}>
+        {triggerLabel ?? (
+          <>
+            <UserPlus className="h-4 w-4 mr-1.5" />
+            Manually enroll student
+          </>
+        )}
       </DialogTrigger>
       <DialogContent className="max-w-md">
         <DialogHeader>

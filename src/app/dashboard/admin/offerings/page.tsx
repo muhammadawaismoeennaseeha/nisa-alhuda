@@ -7,7 +7,7 @@ import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { LinkButton } from "@/components/ui/link-button";
 import { formatPriceWithFee } from "@/lib/constants";
-import { Plus, BookOpen, LayoutGrid, Pencil, Users, Lock } from "lucide-react";
+import { Plus, BookOpen, LayoutGrid, Users, Lock } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
 import { DeleteOffering } from "./delete-offering";
 import { OfferingToggles } from "./offering-toggles";
@@ -44,10 +44,11 @@ export default async function AdminOfferingsPage() {
     : { data: null };
   const hideFinance = profile?.role === "instructor";
 
-  const { data: offerings, error } = await supabase
+  const { data, error } = await supabase
     .from("offerings")
     .select("*")
     .order("created_at", { ascending: false });
+  const offerings = (data || []) as Offering[];
 
   if (error) {
     console.error("Error fetching offerings:", error);
@@ -64,10 +65,10 @@ export default async function AdminOfferingsPage() {
     countByOffering[e.offering_id] = (countByOffering[e.offering_id] || 0) + 1;
   });
 
-  const published = (offerings || []).filter((o: any) => o.status === "published").length;
-  const featured = (offerings || []).filter((o: any) => o.is_featured).length;
-  const archived = (offerings || []).filter((o: any) => o.status === "archived").length;
-  const closed = (offerings || []).filter((o: any) => o.admission_closed).length;
+  const published = offerings.filter((o) => o.status === "published").length;
+  const featured = offerings.filter((o) => o.is_featured).length;
+  const archived = offerings.filter((o) => o.status === "archived").length;
+  const closed = offerings.filter((o) => o.admission_closed).length;
 
   return (
     <div>
@@ -118,7 +119,7 @@ export default async function AdminOfferingsPage() {
         )}
       </div>
 
-      {!offerings || offerings.length === 0 ? (
+      {offerings.length === 0 ? (
         <Card>
           <CardContent className="flex flex-col items-center justify-center py-12">
             <BookOpen className="h-12 w-12 text-muted-foreground mb-4" />
@@ -132,8 +133,8 @@ export default async function AdminOfferingsPage() {
         </Card>
       ) : (
         <div className="space-y-3">
-          {offerings.map((offering: any) => {
-            const status = statusConfig[offering.status as keyof typeof statusConfig] || statusConfig.draft;
+          {offerings.map((offering) => {
+            const status = statusConfig[offering.status] || statusConfig.draft;
             return (
               <Card
                 key={offering.id}
@@ -213,31 +214,16 @@ export default async function AdminOfferingsPage() {
                         status={offering.status}
                         admissionClosed={offering.admission_closed || false}
                       />
-                      {/* The course workspace — one page with Overview,
-                          People, Course Structure and Schedule. The Students
-                          and Edit screens below still exist and still work. */}
+                      {/* The course workspace is the single way in: its tabs
+                          own the roster (People) and the offering form
+                          (Details), so there is no separate Students or Edit
+                          button here any more. */}
                       <LinkButton
                         size="sm"
                         href={`/dashboard/admin/offerings/${offering.id}/workspace`}
                       >
                         <LayoutGrid className="h-3.5 w-3.5 mr-1.5" />
                         Manage
-                      </LinkButton>
-                      <LinkButton
-                        variant="outline"
-                        size="sm"
-                        href={`/dashboard/admin/offerings/${offering.id}/students`}
-                      >
-                        <Users className="h-3.5 w-3.5 mr-1.5" />
-                        Students
-                      </LinkButton>
-                      <LinkButton
-                        variant="outline"
-                        size="sm"
-                        href={`/dashboard/admin/offerings/${offering.id}/edit`}
-                      >
-                        <Pencil className="h-3.5 w-3.5 mr-1.5" />
-                        Edit
                       </LinkButton>
                       <DeleteOffering
                         offeringId={offering.id}

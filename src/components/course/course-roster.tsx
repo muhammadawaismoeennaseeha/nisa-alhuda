@@ -8,12 +8,16 @@
  * with the name and email stacked beside it, and whose role and status columns
  * are pills.
  *
- * The table is deliberately narrow — Name, Role, Status, location, Enrolled.
- * The full intake record (phone, age, education) is what the existing
- * /offerings/[id]/students screen is for, and "Add people" links straight to
- * it; carrying all eight columns here only produced a table that scrolled off
- * its own card. The phone layout keeps every field, since a stacked card has
- * the room a row doesn't.
+ * The table is narrow by default — Name, Role, Status, location, Enrolled —
+ * because eight columns scroll off the card. `intakeDetails` opts back into
+ * the phone/age/education columns the retired /offerings/[id]/students screen
+ * carried, for the admin workspace that replaced it. The phone layout keeps
+ * every field either way, since a stacked card has the room a row doesn't.
+ *
+ * "Add people" is a link (`addHref`) or, where the caller owns the flow
+ * outright, a rendered control (`addAction`) — the admin workspace passes its
+ * enrol dialog in that slot so the roster is where people are added, not just
+ * where they're listed.
  *
  * Filtering is client-side on purpose: a course roster is tens of rows, already
  * in memory, and a round-trip per keystroke would be slower than the filter.
@@ -139,7 +143,17 @@ function RolePill({ role }: { role: CourseRole }) {
   return <span className={cn(pillBase, pillTones[tone])}>{label}</span>;
 }
 
-function EmptyState({ title, hint }: { title: string; hint: string }) {
+function EmptyState({
+  title,
+  hint,
+  action,
+}: {
+  title: string;
+  hint: string;
+  /** Kept on the empty state too — an empty roster is exactly when an admin
+   *  needs the "add people" control most. */
+  action?: React.ReactNode;
+}) {
   return (
     <div
       className={cn(
@@ -150,6 +164,7 @@ function EmptyState({ title, hint }: { title: string; hint: string }) {
       <Users className="mb-4 h-10 w-10 text-rose-200 dark:text-rose-900" />
       <p className="mb-1.5 text-base text-muted-foreground">{title}</p>
       <p className="text-sm text-muted-foreground">{hint}</p>
+      {action && <div className="mt-5">{action}</div>}
     </div>
   );
 }
@@ -158,19 +173,34 @@ export function CourseRoster({
   rows,
   addHref,
   addLabel = "Add people",
+  addAction,
+  intakeDetails = false,
   emptyTitle = "No enrolled students yet",
   emptyHint = "Once enrollments are approved, students will show up here.",
 }: {
   rows: RosterEnrollment[];
-  /** Where "Add people" goes. Omit it and the button isn't rendered. */
+  /** Where "Add people" goes. Omit it and the link isn't rendered. */
   addHref?: string;
   addLabel?: string;
+  /** A control rendered in place of the "Add people" link — takes precedence. */
+  addAction?: React.ReactNode;
+  /** Adds the Phone / Age / Education columns to the desktop table. */
+  intakeDetails?: boolean;
   emptyTitle?: string;
   emptyHint?: string;
 }) {
   const [query, setQuery] = useState("");
   const [roleFilter, setRoleFilter] =
     useState<(typeof ROLE_FILTERS)[number]["key"]>("all");
+
+  const headers = [
+    "Name",
+    "Role",
+    "Status",
+    "City / Country",
+    ...(intakeDetails ? ["Phone", "Age", "Education"] : []),
+    "Enrolled",
+  ];
 
   const filtered = useMemo(() => {
     const q = query.trim().toLowerCase();
@@ -187,7 +217,9 @@ export function CourseRoster({
   }, [rows, query, roleFilter]);
 
   if (rows.length === 0) {
-    return <EmptyState title={emptyTitle} hint={emptyHint} />;
+    return (
+      <EmptyState title={emptyTitle} hint={emptyHint} action={addAction} />
+    );
   }
 
   return (
@@ -228,12 +260,13 @@ export function CourseRoster({
           ))}
         </div>
 
-        {addHref && (
-          <Link href={addHref} className={courseButtonPrimary}>
-            <Plus className="h-4 w-4" />
-            {addLabel}
-          </Link>
-        )}
+        {addAction ??
+          (addHref && (
+            <Link href={addHref} className={courseButtonPrimary}>
+              <Plus className="h-4 w-4" />
+              {addLabel}
+            </Link>
+          ))}
       </div>
 
       {filtered.length === 0 ? (
@@ -246,16 +279,14 @@ export function CourseRoster({
             <table className="w-full border-collapse">
               <thead>
                 <tr>
-                  {["Name", "Role", "Status", "City / Country", "Enrolled"].map(
-                    (h) => (
-                      <th
-                        key={h}
-                        className="px-3.5 pb-2.5 text-left text-[11px] font-semibold tracking-[0.04em] whitespace-nowrap text-muted-foreground uppercase"
-                      >
-                        {h}
-                      </th>
-                    )
-                  )}
+                  {headers.map((h) => (
+                    <th
+                      key={h}
+                      className="px-3.5 pb-2.5 text-left text-[11px] font-semibold tracking-[0.04em] whitespace-nowrap text-muted-foreground uppercase"
+                    >
+                      {h}
+                    </th>
+                  ))}
                 </tr>
               </thead>
               <tbody>
@@ -288,6 +319,19 @@ export function CourseRoster({
                       <td className="px-3.5 py-3 text-[13.5px] text-muted-foreground">
                         {cityCountryOf(r)}
                       </td>
+                      {intakeDetails && (
+                        <>
+                          <td className="px-3.5 py-3 text-[13.5px] whitespace-nowrap text-muted-foreground">
+                            {r.student_details?.phone || "—"}
+                          </td>
+                          <td className="px-3.5 py-3 text-[13.5px] text-muted-foreground">
+                            {r.student_details?.age || "—"}
+                          </td>
+                          <td className="px-3.5 py-3 text-[13.5px] text-muted-foreground">
+                            {r.student_details?.education_level || "—"}
+                          </td>
+                        </>
+                      )}
                       <td className="px-3.5 py-3 text-xs whitespace-nowrap text-muted-foreground">
                         {formatDate(r.created_at)}
                       </td>
