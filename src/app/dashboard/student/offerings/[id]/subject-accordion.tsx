@@ -237,17 +237,22 @@ export function SubjectAccordion({
             <button
               onClick={() => toggleSubject(subject.id)}
               aria-expanded={isOpen}
-              className="flex w-full cursor-pointer items-center gap-3 px-[18px] py-[15px] text-left"
+              className={cn(
+                "flex w-full cursor-pointer items-center gap-3.5 rounded-t-[var(--radius)] px-[18px] py-4 text-left transition-colors",
+                isOpen
+                  ? "bg-rose-50/60 dark:bg-rose-950/20"
+                  : "hover:bg-rose-50/40 dark:hover:bg-rose-950/10"
+              )}
             >
+              {/* Numbered subject tile — the top of the same numbered
+                  language the lesson rows use, one size up and filled. */}
+              <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-xl bg-gradient-to-br from-rose-500 to-rose-600 text-sm font-bold text-white tabular-nums shadow-sm dark:from-rose-600 dark:to-rose-700">
+                {subjectIndex + 1}
+              </span>
+
               <span className="min-w-0 flex-1">
                 <span className="font-heading flex flex-wrap items-center gap-x-2 gap-y-1 text-[15px] font-semibold">
-                  <span>
-                    <span className="text-rose-500 dark:text-rose-300">
-                      {subjectIndex + 1}
-                    </span>
-                    <span className="mx-1.5 text-muted-foreground">·</span>
-                    {subject.title}
-                  </span>
+                  <span>{subject.title}</span>
                   {progress.total > 0 && progress.pct === 100 && (
                     <span className={cn(pillBase, pillTones.success)}>
                       Complete
@@ -270,12 +275,21 @@ export function SubjectAccordion({
                 />
               )}
 
-              <ChevronDown
+              <span
                 className={cn(
-                  "h-4 w-4 shrink-0 text-muted-foreground transition-transform duration-200",
-                  !isOpen && "-rotate-90"
+                  "flex h-7 w-7 shrink-0 items-center justify-center rounded-full transition-colors duration-200",
+                  isOpen
+                    ? "bg-rose-100/70 text-rose-600 dark:bg-rose-900/40 dark:text-rose-300"
+                    : "text-muted-foreground"
                 )}
-              />
+              >
+                <ChevronDown
+                  className={cn(
+                    "h-4 w-4 transition-transform duration-200",
+                    !isOpen && "-rotate-90"
+                  )}
+                />
+              </span>
             </button>
 
             {isOpen && (
@@ -449,15 +463,25 @@ function LessonRow({
   return (
     <li
       className={cn(
-        "border-t",
+        "border-t transition-colors",
         HAIRLINE,
-        isCompleted && "bg-sage-50/60 dark:bg-emerald-950/10"
+        isCompleted
+          ? "bg-sage-50/60 dark:bg-emerald-950/10"
+          : "hover:bg-rose-50/30 dark:hover:bg-rose-950/10"
       )}
     >
       <div className="flex flex-wrap items-center gap-x-3 gap-y-2 px-[18px] py-3">
-        {/* The mockup's numbered square. */}
-        <span className="flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-lg bg-rose-50 text-xs font-bold text-rose-600 tabular-nums dark:bg-rose-950/50 dark:text-rose-300">
-          {index}
+        {/* The mockup's numbered square — turns into a sage check once
+            the class is watched, so "done" reads at a glance down the list. */}
+        <span
+          className={cn(
+            "flex h-[26px] w-[26px] shrink-0 items-center justify-center rounded-lg text-xs font-bold tabular-nums transition-colors",
+            isCompleted
+              ? "bg-sage-50 text-sage-700 dark:bg-emerald-950/50 dark:text-emerald-300"
+              : "bg-rose-50 text-rose-600 dark:bg-rose-950/50 dark:text-rose-300"
+          )}
+        >
+          {isCompleted ? <CheckCircle className="h-3.5 w-3.5" /> : index}
         </span>
 
         {/* Lesson info */}
