@@ -37,6 +37,7 @@ import {
   ChevronUp,
   Eye,
   EyeOff,
+  FolderOpen,
   Layers,
   Loader2,
   Pencil,
@@ -69,6 +70,7 @@ import {
 import { CourseConfirmDialog } from "./course-confirm";
 import { LessonDialog } from "./lesson-dialog";
 import { SubjectDialog, type InstructorOption } from "./subject-dialog";
+import { LessonMaterialsDialog } from "./lesson-materials-dialog";
 import type { Lesson, Subject } from "@/lib/types/database";
 
 export type SubjectWithInstructor = Subject & {
@@ -133,6 +135,9 @@ export function CourseStructureEditor({
   const [pending, setPending] = useState<PendingDelete | null>(null);
   const [deleting, setDeleting] = useState(false);
   const [togglingId, setTogglingId] = useState<string | null>(null);
+  const [counts, setCounts] = useState(resourceCounts);
+  useEffect(() => setCounts(resourceCounts), [resourceCounts]);
+  const [materialsLesson, setMaterialsLesson] = useState<Lesson | null>(null);
 
   const orphans = useMemo(
     () => lessons.filter((l) => !l.subject_id),
@@ -282,7 +287,7 @@ export function CourseStructureEditor({
               total={subjects.length}
               subject={subject}
               lessons={group}
-              resourceCounts={resourceCounts}
+              resourceCounts={counts}
               togglingId={togglingId}
               onMove={(dir) => moveSubject(i, dir)}
               onEdit={() => setSubjectDialog({ open: true, subject })}
@@ -306,6 +311,7 @@ export function CourseStructureEditor({
               onDeleteLesson={(lesson) => setPending({ kind: "lesson", lesson })}
               onTogglePublish={togglePublish}
               onMoveLesson={(idx, dir) => moveLesson(group, idx, dir)}
+              onOpenMaterials={setMaterialsLesson}
             />
           );
         })
@@ -324,7 +330,7 @@ export function CourseStructureEditor({
           </div>
           <LessonRows
             lessons={orphans}
-            resourceCounts={resourceCounts}
+            resourceCounts={counts}
             togglingId={togglingId}
             onEdit={(lesson) =>
               setLessonDialog({
@@ -337,6 +343,7 @@ export function CourseStructureEditor({
             onDelete={(lesson) => setPending({ kind: "lesson", lesson })}
             onTogglePublish={togglePublish}
             onMove={(idx, dir) => moveLesson(orphans, idx, dir)}
+            onOpenMaterials={setMaterialsLesson}
           />
         </div>
       )}
@@ -497,6 +504,15 @@ export function CourseStructureEditor({
           )}
         </CourseConfirmDialog>
       )}
+
+      <LessonMaterialsDialog
+        open={materialsLesson !== null}
+        onOpenChange={(open) => !open && setMaterialsLesson(null)}
+        lesson={materialsLesson}
+        onCountChange={(lessonId, count) =>
+          setCounts((prev) => ({ ...prev, [lessonId]: count }))
+        }
+      />
     </div>
   );
 }
@@ -518,6 +534,7 @@ function SubjectBlock({
   onDeleteLesson,
   onTogglePublish,
   onMoveLesson,
+  onOpenMaterials,
 }: {
   index: number;
   total: number;
@@ -533,6 +550,7 @@ function SubjectBlock({
   onDeleteLesson: (lesson: Lesson) => void;
   onTogglePublish: (lesson: Lesson) => void;
   onMoveLesson: (index: number, direction: -1 | 1) => void;
+  onOpenMaterials: (lesson: Lesson) => void;
 }) {
   const [open, setOpen] = useState(true);
   const scheduleLabel = scheduleDisplayLabel(subject);
@@ -642,6 +660,7 @@ function SubjectBlock({
               onDelete={onDeleteLesson}
               onTogglePublish={onTogglePublish}
               onMove={onMoveLesson}
+              onOpenMaterials={onOpenMaterials}
             />
           )}
           <div className="border-t border-border-soft px-[18px] py-3 dark:border-border">
@@ -670,6 +689,7 @@ function LessonRows({
   onDelete,
   onTogglePublish,
   onMove,
+  onOpenMaterials,
 }: {
   lessons: Lesson[];
   resourceCounts: Record<string, number>;
@@ -678,6 +698,7 @@ function LessonRows({
   onDelete: (lesson: Lesson) => void;
   onTogglePublish: (lesson: Lesson) => void;
   onMove: (index: number, direction: -1 | 1) => void;
+  onOpenMaterials: (lesson: Lesson) => void;
 }) {
   return (
     <ul className="border-t border-border-soft dark:border-border">
@@ -777,6 +798,15 @@ function LessonRows({
                 ) : (
                   <Eye className="h-3.5 w-3.5" />
                 )}
+              </button>
+              <button
+                type="button"
+                className={courseIconButton}
+                onClick={() => onOpenMaterials(lesson)}
+                aria-label={`Manage materials for ${lesson.title}`}
+                title="Materials"
+              >
+                <FolderOpen className="h-3.5 w-3.5" />
               </button>
               <button
                 type="button"
