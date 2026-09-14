@@ -14,6 +14,7 @@ import { PasswordInput } from "@/components/ui/password-input";
 import { Label } from "@/components/ui/label";
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
+import { GoogleSignInButton } from "@/components/auth/google-signin-button";
 
 export function RegisterForm() {
   const router = useRouter();
@@ -86,7 +87,17 @@ export function RegisterForm() {
   const strength = passwordStrength(password);
 
   return (
-    <form onSubmit={handleSubmit} className="space-y-5">
+    <div className="space-y-5">
+      <GoogleSignInButton label="Sign up with Google" />
+      <div className="relative">
+        <div className="absolute inset-0 flex items-center">
+          <span className="w-full border-t border-border" />
+        </div>
+        <div className="relative flex justify-center text-xs uppercase">
+          <span className="bg-card px-2 text-muted-foreground">or</span>
+        </div>
+      </div>
+      <form onSubmit={handleSubmit} className="space-y-5">
       <div className="space-y-1.5">
         <Label htmlFor="full_name">Full name</Label>
         <div className="relative">
@@ -204,6 +215,7 @@ export function RegisterForm() {
         )}
       </Button>
     </form>
+    </div>
   );
 }
 
