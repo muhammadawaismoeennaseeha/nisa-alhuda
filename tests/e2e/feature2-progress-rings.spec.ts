@@ -8,15 +8,16 @@
  *   - State persists after hard reload
  *   - Edge cases: 0%, 100%, rapid toggle, empty offerings
  *
- * Auth: uses engineer.awaismoeen@gmail.com (admin) — can see all pages.
+ * Auth: uses the seeded E2E admin (admin) — can see all pages.
  * For student-only pages we navigate directly since admin gets same layout.
  */
 import { test, expect, type Page } from "@playwright/test";
+import { e2eAdminEmail, e2eAdminPassword } from "./_credentials";
 
 test.setTimeout(90_000);
 
-const ADMIN_EMAIL = "engineer.awaismoeen@gmail.com";
-const ADMIN_PASSWORD = "awais123#";
+const ADMIN_EMAIL = e2eAdminEmail();
+const ADMIN_PASSWORD = e2eAdminPassword();
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/login");

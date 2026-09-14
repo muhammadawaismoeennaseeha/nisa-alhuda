@@ -19,6 +19,7 @@
  * Usage: npx tsx scripts/seed-e2e-user.ts
  */
 import { createClient } from "@supabase/supabase-js";
+import { e2eAdminEmail, e2eAdminPassword, e2eAdminFullName } from "../tests/e2e/_credentials";
 import * as dotenv from "dotenv";
 
 dotenv.config({ path: ".env.local" });
@@ -39,10 +40,9 @@ if (!/127\.0\.0\.1|localhost/.test(supabaseUrl)) {
   process.exit(1);
 }
 
-// Must stay in step with tests/e2e/*.spec.ts.
-const EMAIL = "engineer.awaismoeen@gmail.com";
-const PASSWORD = "awais123#";
-const FULL_NAME = "Awais Moeen";
+const EMAIL = e2eAdminEmail();
+const PASSWORD = e2eAdminPassword();
+const FULL_NAME = e2eAdminFullName();
 
 const supabase = createClient(supabaseUrl, serviceRoleKey, {
   auth: { autoRefreshToken: false, persistSession: false },

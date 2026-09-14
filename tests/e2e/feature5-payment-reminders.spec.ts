@@ -16,13 +16,14 @@
  * integrates with the reminder flow.
  */
 import { test, expect, type Page } from "@playwright/test";
+import { e2eAdminEmail, e2eAdminPassword } from "./_credentials";
 
 test.setTimeout(90_000);
 
 const BASE         = "http://localhost:3000";
 const CRON_SECRET  = "nisa-alhuda-cron-secret-2026";
-const EMAIL        = "engineer.awaismoeen@gmail.com";
-const PASS         = "awais123#";
+const EMAIL        = e2eAdminEmail();
+const PASS         = e2eAdminPassword();
 const CRON_URL     = `${BASE}/api/cron/send-payment-reminders`;
 
 async function login(page: Page) {

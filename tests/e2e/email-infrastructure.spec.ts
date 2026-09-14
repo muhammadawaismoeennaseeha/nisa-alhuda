@@ -11,12 +11,13 @@
  *   - Broadcast failure toast shows warning vs success
  */
 import { test, expect, type Page } from "@playwright/test";
+import { e2eAdminEmail, e2eAdminPassword } from "./_credentials";
 
 // Dev server lazy-compiles pages on first visit — allow extra time.
 test.setTimeout(90_000);
 
-const ADMIN_EMAIL = "engineer.awaismoeen@gmail.com";
-const ADMIN_PASSWORD = "awais123#";
+const ADMIN_EMAIL = e2eAdminEmail();
+const ADMIN_PASSWORD = e2eAdminPassword();
 
 async function loginAsAdmin(page: Page) {
   await page.goto("/login");

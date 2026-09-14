@@ -6,19 +6,20 @@
  * navigation flows, content visibility, role gating, drawer depth,
  * and responsive behaviour across viewports.
  *
- * Credentials: engineer.awaismoeen@gmail.com (admin role)
+ * Credentials: the seeded E2E admin (admin role)
  * Student bottom nav won't appear for admin — tests verify that and
  * probe all structurally testable aspects.
  */
 import { test, expect, type Page } from "@playwright/test";
+import { e2eAdminEmail, e2eAdminPassword } from "./_credentials";
 import path from "path";
 import fs from "fs";
 
 test.setTimeout(90_000);
 
 const BASE  = "http://localhost:3000";
-const EMAIL = "engineer.awaismoeen@gmail.com";
-const PASS  = "awais123#";
+const EMAIL = e2eAdminEmail();
+const PASS  = e2eAdminPassword();
 
 // Screenshot folder
 const SHOTS = path.join("test-results", "feature4-qa-screenshots");

@@ -21,12 +21,13 @@
  * No skip guards — every test runs and produces a result.
  */
 import { test, expect, type Page } from "@playwright/test";
+import { e2eAdminEmail, e2eAdminPassword } from "./_credentials";
 
 test.setTimeout(90_000);
 
 const BASE   = "http://localhost:3000";
-const EMAIL  = "engineer.awaismoeen@gmail.com";
-const PASS   = "awais123#";
+const EMAIL  = e2eAdminEmail();
+const PASS   = e2eAdminPassword();
 
 // ── Auth helper ───────────────────────────────────────────────────────────────
 
