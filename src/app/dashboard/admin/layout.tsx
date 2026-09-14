@@ -1,12 +1,12 @@
 /**
  * Admin layout guard — admits admins (full access), instructors
- * (admin powers minus billing), and treasurers (payment ledger only).
+ * (admin powers minus billing), and treasurers (no admin screens).
  *
  * Path-aware routing keeps each role on the screens they're allowed
  * to see:
  *   • admin       → everything under /dashboard/admin/*
  *   • instructor  → everything EXCEPT /dashboard/admin/payments/*
- *   • treasurer   → ONLY /dashboard/admin/payments/*
+ *   • treasurer   → no admin screens (payments UI removed)
  *
  * The middleware forwards `x-pathname`, so we can branch on the
  * current path before deciding to render or redirect.
@@ -58,11 +58,10 @@ export default async function AdminLayout({
     return <>{children}</>;
   }
 
-  // Treasurers are payments-only. Bounce them onto the ledger from
-  // anywhere else under /dashboard/admin/.
+  // The payments UI has been removed, so a treasurer has no admin-area
+  // screens left. Bounce any /dashboard/admin/* access to their Settings.
   if (role === "treasurer") {
-    if (onBillingRoute) return <>{children}</>;
-    redirect("/dashboard/admin/payments");
+    redirect("/dashboard/settings");
   }
 
   redirect("/dashboard");

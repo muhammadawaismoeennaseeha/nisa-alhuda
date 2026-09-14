@@ -2,12 +2,7 @@
  * Dashboard layout — shared wrapper for all authenticated dashboard pages.
  * Premium sidebar (grouped, active indicator) + polished mobile header.
  *
- * Also enforces the payment-block gate for students: if a sister is past
- * the 5-day grace period for an unpaid current-cycle fee, every dashboard
- * route except the monthly-payment page and /dashboard/settings has its
- * main content swapped for <LockedContent> — the sidebar, header, and
- * nav stay visible so the LMS feels intact, only the feature is gated.
- * See `src/lib/payment-block.ts` for the debt policy.
+ * Course content is always open — there is no fee-based content gate.
  */
 import { headers } from "next/headers";
 import { redirect } from "next/navigation";
@@ -19,8 +14,6 @@ import { NotificationBell } from "./notification-bell";
 import { MobileNav } from "./mobile-nav";
 import { SidebarNav, type NavSection } from "./sidebar-nav";
 import { StudentBottomNav } from "./student-bottom-nav";
-import { getBlockingDebt } from "@/lib/payment-block";
-import { LockedContent } from "./locked-content";
 import { roleLabel } from "@/lib/portal-roles";
 
 export default async function DashboardLayout({
@@ -53,29 +46,6 @@ export default async function DashboardLayout({
     const currentPath = (await headers()).get("x-pathname") ?? "";
     if (!currentPath.startsWith("/dashboard/settings")) {
       redirect("/dashboard/settings");
-    }
-  }
-
-  // Payment-block gate (students only). Runs before every dashboard render
-  // so a blocked sister can't sneak in via cached navigation. When she IS
-  // blocked, the layout shell (sidebar, header, nav) still renders — only
-  // the main content area is swapped for <LockedContent>. Two paths render
-  // their real children instead: the monthly-payment page (where she can
-  // submit a receipt) and /dashboard/settings (password change / logout).
-  let lockedContent: React.ReactNode = null;
-  if (profile.role === "student") {
-    const pathname = (await headers()).get("x-pathname") || "";
-    const onPaymentPage = pathname.startsWith(
-      "/dashboard/student/monthly-payment/"
-    );
-    const onSettingsPage = pathname.startsWith("/dashboard/settings");
-    if (!onPaymentPage && !onSettingsPage) {
-      const debt = await getBlockingDebt(supabase, profile.id);
-      if (debt) {
-        lockedContent = (
-          <LockedContent debt={debt} fullName={profile.full_name} />
-        );
-      }
     }
   }
 
@@ -136,7 +106,7 @@ export default async function DashboardLayout({
 
         <main className="flex-1 px-4 py-5 md:px-8 md:py-7 pb-24 md:pb-7">
           <div className="mx-auto w-full max-w-6xl">
-            {lockedContent ?? children}
+            {children}
           </div>
         </main>
 
@@ -168,26 +138,6 @@ function getNavSections(role: string): NavSection[] {
             href: "/dashboard/admin/enrollments",
             label: "Enrollments",
             iconName: "GraduationCap",
-          },
-          {
-            href: "/dashboard/admin/payments/overview",
-            label: "Overview",
-            iconName: "BarChart3",
-          },
-          {
-            href: "/dashboard/admin/payments",
-            label: "Payments",
-            iconName: "ClipboardList",
-          },
-          {
-            href: "/dashboard/admin/payments/grid",
-            label: "Billing Grid",
-            iconName: "Table2",
-          },
-          {
-            href: "/dashboard/admin/payments/by-course",
-            label: "By Course",
-            iconName: "Users",
           },
           {
             href: "/dashboard/admin/users",
@@ -273,31 +223,6 @@ function getNavSections(role: string): NavSection[] {
   if (role === "treasurer") {
     return [
       home,
-      {
-        label: "Finance",
-        items: [
-          {
-            href: "/dashboard/admin/payments/overview",
-            label: "Overview",
-            iconName: "BarChart3",
-          },
-          {
-            href: "/dashboard/admin/payments",
-            label: "Payments",
-            iconName: "ClipboardList",
-          },
-          {
-            href: "/dashboard/admin/payments/grid",
-            label: "Billing Grid",
-            iconName: "Table2",
-          },
-          {
-            href: "/dashboard/admin/payments/by-course",
-            label: "By Course",
-            iconName: "Users",
-          },
-        ],
-      },
       {
         label: "Account",
         items: [
@@ -485,11 +410,6 @@ function getNavSections(role: string): NavSection[] {
           href: "/dashboard/student/transcript",
           label: "Transcript",
           iconName: "ScrollText",
-        },
-        {
-          href: "/dashboard/student/fees",
-          label: "My Fees",
-          iconName: "Wallet",
         },
       ],
     },

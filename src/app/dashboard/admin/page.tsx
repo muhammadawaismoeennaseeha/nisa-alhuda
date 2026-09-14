@@ -1,6 +1,6 @@
 /**
  * Admin Dashboard — bento-box system stats overview.
- * Shows total enrolled sisters, revenue, active sessions, storage, and more.
+ * Shows total enrolled sisters, active sessions, storage, and more.
  */
 import { createClient } from "@/lib/supabase/server";
 import { Card, CardContent } from "@/components/ui/card";
@@ -10,7 +10,6 @@ import { PageHeader } from "@/components/dashboard/page-header";
 import {
   Users,
   LayoutDashboard,
-  DollarSign,
   Video,
   BookOpen,
   ClipboardList,
@@ -46,12 +45,10 @@ export default async function AdminDashboardPage() {
     studentsRes,
     enrollmentsRes,
     pendingRes,
-    revenueRes,
     lessonsRes,
     profilesRes,
     recentEnrollmentsRes,
     cronLogsRes,
-    owedCyclesRes,
     pendingFaRes,
     stalledRes,
   ] = await Promise.all([
@@ -69,10 +66,6 @@ export default async function AdminDashboardPage() {
       .select("*", { count: "exact", head: true })
       .eq("status", "pending"),
     supabase
-      .from("enrollments")
-      .select("payment_amount, payment_currency")
-      .eq("status", "approved"),
-    supabase
       .from("lessons")
       .select("id, scheduled_at, is_published", { count: "exact" }),
     supabase.from("profiles").select("*", { count: "exact", head: true }),
@@ -87,11 +80,6 @@ export default async function AdminDashboardPage() {
       .select("id, job_name, ran_at, success, records_processed, error_message")
       .order("ran_at", { ascending: false })
       .limit(10),
-    // Overdue monthly payment cycles (cron-created but student hasn't paid)
-    supabase
-      .from("monthly_payments")
-      .select("*", { count: "exact", head: true })
-      .eq("status", "owed"),
     // FA applications awaiting admin decision
     supabase
       .from("enrollments")
@@ -120,23 +108,9 @@ export default async function AdminDashboardPage() {
   for (const log of cronLogs) {
     if (!lastRunByJob[log.job_name]) lastRunByJob[log.job_name] = log;
   }
-  const owedCyclesCount = owedCyclesRes.count || 0;
   const pendingFaCount = pendingFaRes.count || 0;
   const stalledCount = stalledRes.count || 0;
-  const hasActionItems = stalledCount > 0 || pendingFaCount > 0 || owedCyclesCount > 0;
-
-  // Calculate total revenue — sum PKR + INR (shown together), track USD separately
-  const totalRevenue = (revenueRes.data || [])
-    .filter(
-      (e) =>
-        !e.payment_currency ||
-        e.payment_currency.toUpperCase() === "PKR" ||
-        e.payment_currency.toUpperCase() === "INR"
-    )
-    .reduce((sum, e) => sum + (e.payment_amount || 0), 0);
-  const totalRevenueUsd = (revenueRes.data || [])
-    .filter((e) => (e.payment_currency || "").toUpperCase() === "USD")
-    .reduce((sum, e) => sum + (e.payment_amount || 0), 0);
+  const hasActionItems = stalledCount > 0 || pendingFaCount > 0;
 
   // Active live sessions: lessons scheduled within ±1 hour of now
   const activeSessions = (lessonsRes.data || []).filter((l: any) => {
@@ -158,11 +132,11 @@ export default async function AdminDashboardPage() {
         icon={LayoutDashboard}
         eyebrow="Admin"
         title="System overview"
-        subtitle="Live snapshot of enrollments, revenue, sessions, and storage."
+        subtitle="Live snapshot of enrollments, sessions, and storage."
         actions={
           pendingApprovals > 0 ? (
             <LinkButton
-              href="/dashboard/admin/payments"
+              href="/dashboard/admin/enrollments"
               variant="outline"
               className="border-amber-300 text-amber-700 hover:bg-amber-50"
             >
@@ -189,31 +163,6 @@ export default async function AdminDashboardPage() {
             <p className="text-3xl font-bold">{totalStudents}</p>
             <p className="text-xs text-muted-foreground mt-1">
               {activeEnrollments} active enrollment{activeEnrollments !== 1 ? "s" : ""}
-            </p>
-          </CardContent>
-        </Card>
-
-        {/* Total Revenue */}
-        <Card className="hover-lift sm:col-span-2 lg:col-span-1">
-          <CardContent className="p-5">
-            <div className="flex items-center justify-between mb-3">
-              <p className="text-sm font-medium text-muted-foreground">
-                Total Revenue
-              </p>
-              <div className="h-9 w-9 rounded-xl bg-green-50 dark:bg-green-950/20 flex items-center justify-center">
-                <DollarSign className="h-4 w-4 text-green-600" />
-              </div>
-            </div>
-            <p className="text-3xl font-bold">
-              PKR {totalRevenue.toLocaleString()}
-            </p>
-            <p className="text-xs text-muted-foreground mt-1">
-              from approved enrollments
-              {totalRevenueUsd > 0 && (
-                <span className="ml-1">
-                  + ${totalRevenueUsd.toLocaleString()}
-                </span>
-              )}
             </p>
           </CardContent>
         </Card>
@@ -354,22 +303,6 @@ export default async function AdminDashboardPage() {
                       className="h-auto py-0 font-bold text-amber-600"
                     >
                       {pendingFaCount} <ArrowRight className="h-3 w-3 ml-1" />
-                    </LinkButton>
-                  </div>
-                )}
-                {owedCyclesCount > 0 && (
-                  <div className="flex items-center justify-between">
-                    <span className="flex items-center gap-2 text-sm">
-                      <span className="h-2 w-2 rounded-full bg-amber-400" />
-                      Overdue payment cycles
-                    </span>
-                    <LinkButton
-                      variant="ghost"
-                      size="sm"
-                      href="/dashboard/admin/payments"
-                      className="h-auto py-0 font-bold text-amber-600"
-                    >
-                      {owedCyclesCount} <ArrowRight className="h-3 w-3 ml-1" />
                     </LinkButton>
                   </div>
                 )}

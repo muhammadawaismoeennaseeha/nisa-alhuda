@@ -26,17 +26,9 @@ import {
   Video,
   CheckCircle,
   ExternalLink,
-  AlertCircle,
   Flame,
   Sparkles,
 } from "lucide-react";
-import {
-  firstOfMonth,
-  cyclesBetween,
-  monthlyAmountForEnrollment,
-  formatMonthlyAmount,
-  formatCycleMonth,
-} from "@/lib/monthly-payments";
 import type {
   Offering,
   LiveSession,
@@ -45,7 +37,6 @@ import type {
 import { DashboardGreeting } from "@/components/dashboard/greeting";
 import { StatCard } from "@/components/dashboard/stat-card";
 import { EmptyState } from "@/components/dashboard/empty-state";
-import { PaymentDueModal } from "./payment-due-modal";
 import { ProgressRing } from "@/components/ui/progress-ring";
 
 export default async function StudentDashboardPage() {
@@ -82,9 +73,8 @@ export default async function StudentDashboardPage() {
   })[] = [];
 
   const now = new Date();
-  const currentCycle = firstOfMonth();
 
-  const [lessonsResult, progressResult, sessionsResult, monthlyPayResult] =
+  const [lessonsResult, progressResult, sessionsResult] =
     await Promise.all([
       approvedOfferingIds.length > 0
         ? supabase
@@ -111,24 +101,7 @@ export default async function StudentDashboardPage() {
         )
         .order("scheduled_at", { ascending: true })
         .then((res) => res as { data: typeof liveSessions | null }),
-      approvedOfferingIds.length > 0
-        ? supabase
-            .from("monthly_payments")
-            .select("enrollment_id, status")
-            .eq("student_id", user.id)
-            .eq("cycle_month", currentCycle)
-        : Promise.resolve({ data: null }),
     ]);
-
-  const currentCycleByEnrollment: Record<string, string> = {};
-  if (monthlyPayResult.data) {
-    for (const row of monthlyPayResult.data as Array<{
-      enrollment_id: string;
-      status: string;
-    }>) {
-      currentCycleByEnrollment[row.enrollment_id] = row.status;
-    }
-  }
 
   if (lessonsResult.data) {
     lessonCounts = lessonsResult.data.reduce(
@@ -173,54 +146,6 @@ export default async function StudentDashboardPage() {
       : pending.length > 0
         ? `${pending.length} enrollment${pending.length > 1 ? "s are" : " is"} awaiting review.`
         : "Browse the catalog to find your next course.";
-
-  // Approved monthly enrollments whose current cycle is unpaid — drives the
-  // top-of-page "fee due" banner. Mirrors the per-card `monthlyDue` check
-  // below so the banner and the card badge stay in sync.
-  //
-  // Non-billable enrollments are excluded — these match the same set the
-  // cron skips: rescue rows (manual_approval), full waivers, and promo
-  // comps (free). Plus FA full-waiver (fa_approved_amount === 0).
-  const NON_BILLABLE_METHODS = new Set([
-    "manual_approval",
-    "waiver",
-    "free",
-  ]);
-  const monthlyDueEnrollments = approved
-    .map((enrollment) => {
-      const offering = enrollment.offering as Offering;
-      if (!offering || offering.fee_type !== "monthly") return null;
-      // Skip non-billable enrollments — they don't owe a monthly fee.
-      if (
-        enrollment.payment_method &&
-        NON_BILLABLE_METHODS.has(enrollment.payment_method)
-      )
-        return null;
-      if (enrollment.fa_approved_amount === 0) return null;
-
-      const owedCycles = cyclesBetween(enrollment.created_at);
-      if (!owedCycles.includes(currentCycle)) return null;
-      const status = currentCycleByEnrollment[enrollment.id];
-      const due =
-        status === undefined ||
-        status === "rejected" ||
-        status === "owed";
-      if (!due) return null;
-      const { amount, currency } = monthlyAmountForEnrollment(
-        offering,
-        enrollment
-      );
-      // Flag FA-partial enrollments so the UI can show "Financial Assistance
-      // rate" alongside the reduced amount. (FA full waivers are filtered
-      // out above with fa_approved_amount === 0.)
-      const isFaReduced =
-        enrollment.fa_approved_amount != null &&
-        enrollment.fa_approved_amount > 0;
-      return { enrollment, offering, amount, currency, isFaReduced };
-    })
-    .filter(
-      (x): x is NonNullable<typeof x> => x !== null
-    );
 
   return (
     <div>
@@ -334,77 +259,6 @@ export default async function StudentDashboardPage() {
         </div>
       )}
 
-      {/* Monthly fee due — prominent top-of-page nudge + login modal.
-          The modal (client component) pops once per session on first
-          dashboard load. The banner stays for ongoing visibility. Both
-          render the same unpaid-cycle list with a "Pay / Upload" CTA. */}
-      {monthlyDueEnrollments.length > 0 && (
-        <>
-          <PaymentDueModal
-            cycleLabel={formatCycleMonth(currentCycle)}
-            entries={monthlyDueEnrollments.map(
-              ({ enrollment, offering, amount, currency, isFaReduced }) => ({
-                enrollmentId: enrollment.id,
-                offeringTitle: offering.title,
-                amount,
-                currency,
-                isFaReduced,
-              })
-            )}
-          />
-
-          <div className="mb-6 overflow-hidden rounded-2xl border-2 border-amber-400 bg-gradient-to-br from-amber-100 via-amber-50 to-orange-100 shadow-md dark:border-amber-700 dark:from-amber-950/50 dark:via-amber-900/30 dark:to-orange-950/30">
-            <div className="flex items-center gap-3 border-b border-amber-300 bg-amber-200/60 px-5 py-3 dark:border-amber-800 dark:bg-amber-900/40">
-              <span className="relative flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-amber-500 text-white shadow-sm">
-                <AlertCircle className="h-5 w-5" />
-                <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-amber-400 opacity-60" />
-              </span>
-              <div className="min-w-0">
-                <p className="text-base font-bold text-amber-900 dark:text-amber-100">
-                  Payment due for {formatCycleMonth(currentCycle)}
-                </p>
-                <p className="text-xs text-amber-800/80 dark:text-amber-300">
-                  {monthlyDueEnrollments.length} monthly fee
-                  {monthlyDueEnrollments.length > 1 ? "s are" : " is"} awaiting
-                  your receipt. Upload to keep your access active, in sha Allah.
-                </p>
-              </div>
-            </div>
-            <div className="space-y-2 px-5 py-4">
-              {monthlyDueEnrollments.map(
-                ({ enrollment, offering, amount, currency, isFaReduced }) => (
-                  <div
-                    key={enrollment.id}
-                    className="flex items-center justify-between gap-3 rounded-xl bg-white/80 px-4 py-3 dark:bg-amber-950/30"
-                  >
-                    <div className="min-w-0">
-                      <p className="truncate text-sm font-semibold text-amber-900 dark:text-amber-100">
-                        {offering.title}
-                      </p>
-                      <p className="text-sm font-medium text-amber-700 dark:text-amber-300">
-                        {formatMonthlyAmount(amount, currency)}
-                        {isFaReduced && (
-                          <span className="ml-2 inline-block rounded-full bg-emerald-100 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-wide text-emerald-700 dark:bg-emerald-950/60 dark:text-emerald-300">
-                            Concession
-                          </span>
-                        )}
-                      </p>
-                    </div>
-                    <LinkButton
-                      size="sm"
-                      href={`/dashboard/student/monthly-payment/${enrollment.id}`}
-                      className="press shrink-0 rounded-full"
-                    >
-                      Upload Receipt
-                    </LinkButton>
-                  </div>
-                )
-              )}
-            </div>
-          </div>
-        </>
-      )}
-
       {/* Active Learning */}
       <div className="mb-4 flex items-center justify-between">
         <h2 className="font-heading text-lg font-semibold">
@@ -463,24 +317,6 @@ export default async function StudentDashboardPage() {
             const completed = completedCounts[offering.id] || 0;
             const pct = count > 0 ? Math.round((completed / count) * 100) : 0;
 
-            const owedCycles =
-              offering.fee_type === "monthly"
-                ? cyclesBetween(enrollment.created_at)
-                : [];
-            const owesCurrentCycle = owedCycles.includes(currentCycle);
-            const monthlyStatus = currentCycleByEnrollment[enrollment.id];
-            // 'owed' = cron-created placeholder for this cycle (no receipt yet).
-            // undefined = no row at all (cron hasn't run for this enrollment).
-            // 'rejected' = previous receipt was rejected, action needed.
-            // All three mean "show payment-due badge". 'pending' / 'approved'
-            // mean "leave the student alone".
-            const monthlyDue =
-              offering.fee_type === "monthly" &&
-              owesCurrentCycle &&
-              (monthlyStatus === undefined ||
-                monthlyStatus === "rejected" ||
-                monthlyStatus === "owed");
-
             return (
               <div
                 key={enrollment.id}
@@ -496,11 +332,6 @@ export default async function StudentDashboardPage() {
                     <BookOpen className="h-[18px] w-[18px]" />
                   </div>
                   <div className="flex flex-wrap items-center justify-end gap-1.5">
-                    {monthlyDue && (
-                      <span className={cn(pillBase, pillTones.warning)}>
-                        Payment due
-                      </span>
-                    )}
                     <span className={cn(pillBase, pillTones.success)}>
                       Enrolled
                     </span>

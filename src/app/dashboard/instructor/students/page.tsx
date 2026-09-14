@@ -18,7 +18,6 @@ import {
   Sparkles,
   Clock,
   ScrollText,
-  Wallet,
 } from "lucide-react";
 import { getDashboardViewer, applyTeachingScope } from "@/lib/auth-helpers";
 import type { Profile } from "@/lib/types/database";
@@ -389,26 +388,17 @@ export default async function StudentManagementPage() {
                           style={{ width: `${student.score}%` }}
                         />
                       </div>
-                      {/* Transcript (registrar) and Fees (financial) are not
-                          part of a Teaching Assistant's scope — hide the links
-                          so a TA is never sent to a page that turns them away. */}
+                      {/* The transcript (registrar) is not part of a Teaching
+                          Assistant's scope — hide the link so a TA is never
+                          sent to a page that turns them away. */}
                       {viewer.role !== "ta" && (
-                        <>
-                          <Link
-                            href={`/dashboard/instructor/students/${student.id}/transcript`}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
-                          >
-                            <ScrollText className="h-3.5 w-3.5" />
-                            Transcript
-                          </Link>
-                          <Link
-                            href={`/dashboard/instructor/students/${student.id}/fees`}
-                            className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
-                          >
-                            <Wallet className="h-3.5 w-3.5" />
-                            Fees
-                          </Link>
-                        </>
+                        <Link
+                          href={`/dashboard/instructor/students/${student.id}/transcript`}
+                          className="inline-flex items-center gap-1.5 rounded-lg border border-border px-2.5 py-1.5 text-xs font-medium text-foreground hover:bg-accent"
+                        >
+                          <ScrollText className="h-3.5 w-3.5" />
+                          Transcript
+                        </Link>
                       )}
                     </div>
                   </div>

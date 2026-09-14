@@ -26,8 +26,9 @@ export default async function DashboardPage() {
     case "admin":
       redirect("/dashboard/admin");
     case "treasurer":
-      // Treasurers only have access to the payment ledger.
-      redirect("/dashboard/admin/payments");
+      // The payments UI has been removed; the treasurer role has no
+      // dedicated screens, so land it on Settings (its only nav item).
+      redirect("/dashboard/settings");
     case "instructor":
       redirect("/dashboard/instructor");
     case "ta":

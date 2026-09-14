@@ -40,8 +40,6 @@ import {
   type StudentSubjectGrades,
   type StudentGradeItem,
 } from "./student-course-tabs";
-import { MonthlyPaymentCard } from "./monthly-payment-card";
-import { monthlyAmountForEnrollment } from "@/lib/monthly-payments";
 import {
   computeNextOccurrence,
   hasRecurringSchedule,
@@ -50,7 +48,6 @@ import {
 import type {
   Subject,
   Lesson,
-  MonthlyPayment,
   Offering,
   Enrollment,
   Resource,
@@ -89,25 +86,13 @@ export default async function StudentLearningHubPage({
 
   if (!user) redirect("/login");
 
-  // Verify student has an approved enrollment for this offering. We also
-  // pull payment_currency + created_at + fa_approved_amount because the
-  // monthly-payment card needs them to compute due cycles and the renewal
-  // amount — FA-approved students pay a reduced fee in the same currency.
+  // Verify student has an approved enrollment for this offering.
   const { data: enrollment } = await supabase
     .from("enrollments")
-    .select("id, status, payment_currency, fa_approved_amount, created_at")
+    .select("id, status")
     .eq("student_id", user.id)
     .eq("offering_id", id)
-    .single<
-      Pick<
-        Enrollment,
-        | "id"
-        | "status"
-        | "payment_currency"
-        | "fa_approved_amount"
-        | "created_at"
-      >
-    >();
+    .single<Pick<Enrollment, "id" | "status">>();
 
   if (!enrollment || enrollment.status !== "approved") {
     notFound();
@@ -122,18 +107,6 @@ export default async function StudentLearningHubPage({
 
   if (!offering) notFound();
 
-  // Monthly subscription: pull every cycle payment on this enrollment so the
-  // card can render status per month. Only fetched for monthly-fee offerings.
-  let monthlyPayments: MonthlyPayment[] = [];
-  if (offering.fee_type === "monthly") {
-    const { data: mp } = await supabase
-      .from("monthly_payments")
-      .select("*")
-      .eq("enrollment_id", enrollment.id)
-      .order("cycle_month", { ascending: false });
-    monthlyPayments = (mp as MonthlyPayment[]) || [];
-  }
-  const monthly = monthlyAmountForEnrollment(offering, enrollment);
 
   // Fetch subjects for this offering with instructor info
   const { data: subjects } = await supabase
@@ -443,19 +416,6 @@ export default async function StudentLearningHubPage({
           )
         }
       />
-
-      {/* Monthly subscription card — renders only for monthly-fee offerings */}
-      {offering.fee_type === "monthly" && (
-        <div className="mt-5">
-          <MonthlyPaymentCard
-            enrollmentId={enrollment.id}
-            enrolledAt={enrollment.created_at}
-            monthlyAmount={monthly.amount}
-            currency={monthly.currency}
-            payments={monthlyPayments}
-          />
-        </div>
-      )}
 
       {/* WhatsApp Group — prominent banner for enrolled students */}
       {offering.whatsapp_link && (
