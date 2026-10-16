@@ -30,6 +30,8 @@ export interface SubjectQuizzes {
   quizzes: StudentQuiz[];
 }
 
+import { StudentAssignmentList, type StudentAssignmentItem } from "./student-assignment-list";
+
 export interface StudentGradeItem {
   kind: "quiz" | "assessment";
   label: string;
@@ -51,21 +53,26 @@ type TabKey = "materials" | "quizzes" | "grades";
 
 export function StudentCourseTabs({
   quizGroups,
+  fileAssignments = [],
+  offeringId,
   gradeGroups,
   children,
 }: {
   quizGroups: SubjectQuizzes[];
+  fileAssignments?: StudentAssignmentItem[];
+  offeringId: string;
   gradeGroups: StudentSubjectGrades[];
   children: React.ReactNode;
 }) {
   const [active, setActive] = useState<TabKey>("materials");
   const quizCount = quizGroups.reduce((n, g) => n + g.quizzes.length, 0);
+  const totalAssessments = quizCount + fileAssignments.length;
 
   const tabs: readonly CourseTab<TabKey>[] = [
     { key: "materials", label: "Materials", icon: BookOpen },
     {
       key: "quizzes",
-      label: quizCount > 0 ? `Quizzes · ${quizCount}` : "Quizzes",
+      label: totalAssessments > 0 ? `Quizzes & Papers · ${totalAssessments}` : "Quizzes",
       icon: FileQuestion,
     },
     { key: "grades", label: "Grades", icon: GraduationCap },
@@ -82,27 +89,32 @@ export function StudentCourseTabs({
 
       {active === "materials" && children}
 
-      {active === "quizzes" &&
-        (quizCount === 0 ? (
-          <div
-            className={cn(
-              courseCard,
-              "flex flex-col items-center justify-center px-[18px] py-12 text-center"
-            )}
-          >
-            <div className="mb-3.5 flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-steel-50 text-steel-700 dark:bg-sky-950/50 dark:text-sky-300">
-              <FileQuestion className="h-[18px] w-[18px]" />
+      {active === "quizzes" && (
+        <div className="space-y-6">
+          <StudentAssignmentList
+            assignments={fileAssignments}
+            offeringId={offeringId}
+          />
+
+          {quizCount === 0 && fileAssignments.length === 0 ? (
+            <div
+              className={cn(
+                courseCard,
+                "flex flex-col items-center justify-center px-[18px] py-12 text-center"
+              )}
+            >
+              <div className="mb-3.5 flex h-[38px] w-[38px] items-center justify-center rounded-[10px] bg-steel-50 text-steel-700 dark:bg-sky-950/50 dark:text-sky-300">
+                <FileQuestion className="h-[18px] w-[18px]" />
+              </div>
+              <p className="font-heading text-[15px] font-semibold">
+                No quizzes or assignments yet
+              </p>
+              <p className="mt-1 text-sm text-muted-foreground">
+                When your instructor publishes a quiz or question paper, it will appear here.
+              </p>
             </div>
-            <p className="font-heading text-[15px] font-semibold">
-              No quizzes yet
-            </p>
-            <p className="mt-1 text-sm text-muted-foreground">
-              When your instructor publishes a quiz, it will appear here.
-            </p>
-          </div>
-        ) : (
-          <div className="space-y-6">
-            {quizGroups
+          ) : (
+            quizGroups
               .filter((g) => g.quizzes.length > 0)
               .map((g) => (
                 <div key={g.subjectId} className="space-y-3">
@@ -111,9 +123,10 @@ export function StudentCourseTabs({
                   </h3>
                   <QuizRunner quizzes={g.quizzes} />
                 </div>
-              ))}
-          </div>
-        ))}
+              ))
+          )}
+        </div>
+      )}
 
       {active === "grades" && <GradesView groups={gradeGroups} />}
     </div>

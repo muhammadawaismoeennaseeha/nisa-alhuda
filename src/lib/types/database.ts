@@ -22,6 +22,13 @@ export type NotificationType =
   | "new_announcement"
   | "general";
 
+export type QuizQuestionType =
+  | "multiple_choice"
+  | "true_false"
+  | "multi_select"
+  | "ordering"
+  | "fill_in_blank";
+
 // ─── Row Types (what you GET from the database) ───
 
 export interface Profile {

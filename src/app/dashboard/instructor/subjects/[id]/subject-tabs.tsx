@@ -15,7 +15,8 @@
  * which existing panel is on screen.
  */
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
+import { useSearchParams, useRouter, usePathname } from "next/navigation";
 import { BookOpen, FileQuestion, GraduationCap } from "lucide-react";
 import { CourseTabs, type CourseTab } from "@/components/course/course-tabs";
 import { LessonList } from "./lesson-list";
@@ -28,6 +29,8 @@ import {
   type GbGrade,
   type GbQuizScore,
 } from "./gradebook-panel";
+import { FileAssignmentManager } from "./file-assignment-manager";
+import type { AssignmentPaperRow } from "./assignment-actions";
 import type { Lesson, Resource } from "@/lib/types/database";
 
 export interface GradebookData {
@@ -47,6 +50,7 @@ export function SubjectTabs({
   initialResources,
   subjectRecurringMeetingUrl,
   quizzes,
+  fileAssignments = [],
   gradebook,
 }: {
   subjectId: string;
@@ -55,15 +59,36 @@ export function SubjectTabs({
   initialResources: Resource[];
   subjectRecurringMeetingUrl?: string | null;
   quizzes: ManagedQuiz[];
+  fileAssignments?: AssignmentPaperRow[];
   gradebook: GradebookData;
 }) {
-  const [active, setActive] = useState<SubjectTabKey>("classes");
+  const searchParams = useSearchParams();
+  const router = useRouter();
+  const pathname = usePathname();
+  const tabParam = searchParams.get("tab") as SubjectTabKey | null;
+  const [active, setActive] = useState<SubjectTabKey>(
+    tabParam === "quizzes" || tabParam === "gradebook" ? tabParam : "classes"
+  );
 
+  useEffect(() => {
+    if (tabParam && (tabParam === "classes" || tabParam === "quizzes" || tabParam === "gradebook")) {
+      setActive(tabParam);
+    }
+  }, [tabParam]);
+
+  function handleTabChange(tab: SubjectTabKey) {
+    setActive(tab);
+    const params = new URLSearchParams(searchParams.toString());
+    params.set("tab", tab);
+    router.replace(`${pathname}?${params.toString()}`, { scroll: false });
+  }
+
+  const totalAssessments = quizzes.length + fileAssignments.length;
   const tabs: readonly CourseTab<SubjectTabKey>[] = [
     { key: "classes", label: "Classes", icon: BookOpen },
     {
       key: "quizzes",
-      label: quizzes.length > 0 ? `Quizzes · ${quizzes.length}` : "Quizzes",
+      label: totalAssessments > 0 ? `Quizzes & Papers · ${totalAssessments}` : "Quizzes",
       icon: FileQuestion,
     },
     { key: "gradebook", label: "Gradebook", icon: GraduationCap },
@@ -74,7 +99,7 @@ export function SubjectTabs({
       <CourseTabs
         tabs={tabs}
         active={active}
-        onChange={setActive}
+        onChange={handleTabChange}
         label="Subject section"
       />
 
@@ -89,11 +114,19 @@ export function SubjectTabs({
       )}
 
       {active === "quizzes" && (
-        <QuizManager
-          subjectId={subjectId}
-          offeringId={offeringId}
-          quizzes={quizzes}
-        />
+        <div className="space-y-6">
+          <QuizManager
+            subjectId={subjectId}
+            offeringId={offeringId}
+            quizzes={quizzes}
+          />
+
+          <FileAssignmentManager
+            subjectId={subjectId}
+            offeringId={offeringId}
+            assignments={fileAssignments}
+          />
+        </div>
       )}
 
       {active === "gradebook" && (

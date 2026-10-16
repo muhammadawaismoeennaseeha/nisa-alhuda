@@ -117,7 +117,7 @@ export default async function SubjectFolderPage({
   const { data: quizRows } = await supabase
     .from("quizzes")
     .select(
-      "id, title, instructions, is_published, quiz_questions(id, text, marks, sort_order, quiz_options(id, text, is_correct, sort_order))"
+      "id, title, instructions, is_published, quiz_questions(id, text, marks, question_type, sort_order, quiz_options(id, text, is_correct, sort_order))"
     )
     .eq("subject_id", id)
     .order("created_at", { ascending: true });
@@ -143,6 +143,7 @@ export default async function SubjectFolderPage({
       id: string;
       text: string;
       marks: number;
+      question_type?: string;
       sort_order: number;
       quiz_options: { id: string; text: string; is_correct: boolean; sort_order: number }[];
     }[];
@@ -159,6 +160,7 @@ export default async function SubjectFolderPage({
         id: qq.id,
         text: qq.text,
         marks: Number(qq.marks),
+        question_type: (qq.question_type as any) || "multiple_choice",
         options: [...(qq.quiz_options ?? [])]
           .sort((a, b) => a.sort_order - b.sort_order)
           .map((o) => ({ id: o.id, text: o.text, is_correct: o.is_correct })),
@@ -239,11 +241,57 @@ export default async function SubjectFolderPage({
     }));
   }
 
+  // ── Assignment Papers (PDF / File Question Papers) ──
+  const { data: assignmentPaperRows } = await supabase
+    .from("assignment_papers")
+    .select("*, submissions:assignment_submissions(id, student_id, score)")
+    .eq("subject_id", id)
+    .order("created_at", { ascending: true });
+
+  const managedFileAssignments = (assignmentPaperRows ?? []).map((a: any) => ({
+    id: a.id,
+    subject_id: a.subject_id,
+    offering_id: a.offering_id,
+    title: a.title,
+    instructions: a.instructions,
+    question_paper_url: a.question_paper_url,
+    file_name: a.file_name,
+    file_size: a.file_size ? Number(a.file_size) : null,
+    max_marks: Number(a.max_marks),
+    due_date: a.due_date,
+    is_published: a.is_published,
+    submission_count: (a.submissions ?? []).length,
+    created_at: a.created_at,
+  }));
+
+  // Merge published file assignments into Gradebook as assessments
+  const fileAssignmentGbAssessments = (assignmentPaperRows ?? [])
+    .filter((a: any) => a.is_published)
+    .map((a: any) => ({
+      id: a.id,
+      title: a.title,
+      type: "assignment" as const,
+      max_marks: Number(a.max_marks),
+    }));
+
+  const fileAssignmentGbGrades: GradebookData["grades"] = [];
+  for (const a of assignmentPaperRows ?? []) {
+    for (const sub of (a.submissions ?? []) as { id: string; student_id: string; score: number | null }[]) {
+      if (sub.score !== null) {
+        fileAssignmentGbGrades.push({
+          assessment_id: a.id,
+          student_id: sub.student_id,
+          marks: Number(sub.score),
+        });
+      }
+    }
+  }
+
   const gradebookData: GradebookData = {
     students: gbStudents,
-    assessments: gbAssessments,
+    assessments: [...fileAssignmentGbAssessments, ...gbAssessments],
     quizzes: gbQuizzes,
-    grades: gbGrades,
+    grades: [...fileAssignmentGbGrades, ...gbGrades],
     quizScores: gbQuizScores,
   };
 
@@ -302,6 +350,7 @@ export default async function SubjectFolderPage({
         initialResources={resources}
         subjectRecurringMeetingUrl={(subject as Subject).recurring_meeting_url ?? null}
         quizzes={managedQuizzes}
+        fileAssignments={managedFileAssignments}
         gradebook={gradebookData}
       />
     </div>

@@ -18,6 +18,8 @@ import { createAdminClient } from "@/lib/supabase/admin";
 import { requireRole, assertAssistsIfTA } from "@/lib/db/auth";
 import { logAudit } from "@/lib/db/audit";
 
+import type { QuizQuestionType } from "@/lib/types/database";
+
 type Result<T = void> = { success: boolean; error?: string; data?: T };
 
 // A Teaching Assistant is course-scoped: assertAssistsIfTA() below confirms
@@ -31,7 +33,30 @@ export interface QuizOptionInput {
 export interface QuizQuestionInput {
   text: string;
   marks: number;
+  question_type: QuizQuestionType;
   options: QuizOptionInput[];
+}
+
+export interface QuizSubmissionDetail {
+  attempt_id: string;
+  student_id: string;
+  student_name: string;
+  submitted_at: string;
+  score: number;
+  max_score: number;
+  percentage: number;
+  answers: {
+    question_id: string;
+    question_text: string;
+    question_type: QuizQuestionType;
+    marks: number;
+    is_correct: boolean;
+    selected_option_id: string | null;
+    selected_option_ids: string[] | null;
+    text_answer: string | null;
+    ordered_option_ids: string[] | null;
+    options: { id: string; text: string; is_correct: boolean; sort_order: number }[];
+  }[];
 }
 
 async function attemptCount(
@@ -160,12 +185,30 @@ export async function saveQuestions(
   }
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
+    const type = q.question_type || "multiple_choice";
     if (!q.text.trim()) return { success: false, error: `Question ${i + 1} has no text.` };
     if (!(q.marks > 0)) return { success: false, error: `Question ${i + 1} needs marks above zero.` };
     const opts = q.options.filter((o) => o.text.trim());
-    if (opts.length < 2) return { success: false, error: `Question ${i + 1} needs at least two options.` };
-    if (opts.filter((o) => o.is_correct).length !== 1) {
-      return { success: false, error: `Question ${i + 1} needs exactly one correct option.` };
+
+    if (type === "multiple_choice") {
+      if (opts.length < 2) return { success: false, error: `Question ${i + 1} (Multiple Choice) needs at least two options.` };
+      if (opts.filter((o) => o.is_correct).length !== 1) {
+        return { success: false, error: `Question ${i + 1} (Multiple Choice) needs exactly one correct option.` };
+      }
+    } else if (type === "true_false") {
+      if (opts.length !== 2) return { success: false, error: `Question ${i + 1} (True/False) needs True and False options.` };
+      if (opts.filter((o) => o.is_correct).length !== 1) {
+        return { success: false, error: `Question ${i + 1} (True/False) needs one correct answer selected.` };
+      }
+    } else if (type === "multi_select") {
+      if (opts.length < 2) return { success: false, error: `Question ${i + 1} (Multiple Select) needs at least two options.` };
+      if (opts.filter((o) => o.is_correct).length < 1) {
+        return { success: false, error: `Question ${i + 1} (Multiple Select) needs at least one correct option.` };
+      }
+    } else if (type === "ordering") {
+      if (opts.length < 2) return { success: false, error: `Question ${i + 1} (Ordering) needs at least two items to arrange.` };
+    } else if (type === "fill_in_blank") {
+      if (opts.length < 1) return { success: false, error: `Question ${i + 1} (Fill in Blank) needs at least one correct answer.` };
     }
   }
 
@@ -175,9 +218,16 @@ export async function saveQuestions(
 
   for (let i = 0; i < questions.length; i++) {
     const q = questions[i];
+    const type = q.question_type || "multiple_choice";
     const { data: qRow, error: qErr } = await admin
       .from("quiz_questions")
-      .insert({ quiz_id: quizId, text: q.text.trim(), marks: q.marks, sort_order: i })
+      .insert({
+        quiz_id: quizId,
+        text: q.text.trim(),
+        marks: q.marks,
+        question_type: type,
+        sort_order: i,
+      })
       .select("id")
       .single();
     if (qErr || !qRow) return { success: false, error: qErr?.message ?? "Could not save a question." };
@@ -187,7 +237,7 @@ export async function saveQuestions(
       .map((o, j) => ({
         question_id: qRow.id,
         text: o.text.trim(),
-        is_correct: o.is_correct,
+        is_correct: type === "ordering" ? true : o.is_correct,
         sort_order: j,
       }));
     const { error: oErr } = await admin.from("quiz_options").insert(optRows);
@@ -203,6 +253,108 @@ export async function saveQuestions(
   });
   revalidatePath(`/dashboard/instructor/subjects/${subjectId}`);
   return { success: true };
+}
+
+/** Fetch all student submissions / attempts for a quiz (Instructor assessment view). */
+export async function getQuizSubmissions(
+  quizId: string
+): Promise<Result<QuizSubmissionDetail[]>> {
+  const auth = await requireRole([...STAFF]);
+  if (!auth.ok) return { success: false, error: auth.error };
+
+  const admin = createAdminClient();
+
+  const { data: attempts, error: attErr } = await admin
+    .from("quiz_attempts")
+    .select(`
+      id,
+      student_id,
+      submitted_at,
+      score,
+      max_score,
+      percentage,
+      student:profiles!quiz_attempts_student_id_fkey(full_name)
+    `)
+    .eq("quiz_id", quizId)
+    .order("submitted_at", { ascending: false });
+
+  if (attErr) return { success: false, error: attErr.message };
+  if (!attempts || attempts.length === 0) return { success: true, data: [] };
+
+  const attemptIds = attempts.map((a) => a.id);
+
+  const { data: questions } = await admin
+    .from("quiz_questions")
+    .select(`
+      id,
+      text,
+      marks,
+      question_type,
+      sort_order,
+      options:quiz_options(id, text, is_correct, sort_order)
+    `)
+    .eq("quiz_id", quizId)
+    .order("sort_order", { ascending: true });
+
+  const { data: answers } = await admin
+    .from("quiz_answers")
+    .select(`
+      attempt_id,
+      question_id,
+      is_correct,
+      selected_option_id,
+      selected_option_ids,
+      text_answer,
+      ordered_option_ids
+    `)
+    .in("attempt_id", attemptIds);
+
+  const answersByAttempt = new Map<string, typeof answers>();
+  for (const ans of answers ?? []) {
+    const list = answersByAttempt.get(ans.attempt_id) ?? [];
+    list.push(ans);
+    answersByAttempt.set(ans.attempt_id, list);
+  }
+
+  const result: QuizSubmissionDetail[] = attempts.map((att) => {
+    const stName = Array.isArray(att.student)
+      ? att.student[0]?.full_name ?? "Student"
+      : (att.student as { full_name?: string } | null)?.full_name ?? "Student";
+
+    const attAnswers = answersByAttempt.get(att.id) ?? [];
+    const answerMap = new Map(attAnswers.map((a) => [a.question_id, a]));
+
+    const formattedAnswers = (questions ?? []).map((q) => {
+      const ans = answerMap.get(q.id);
+      const opts = [...(q.options ?? [])].sort((a, b) => a.sort_order - b.sort_order);
+
+      return {
+        question_id: q.id,
+        question_text: q.text,
+        question_type: (q.question_type as QuizQuestionType) || "multiple_choice",
+        marks: Number(q.marks),
+        is_correct: ans?.is_correct ?? false,
+        selected_option_id: ans?.selected_option_id ?? null,
+        selected_option_ids: ans?.selected_option_ids ?? null,
+        text_answer: ans?.text_answer ?? null,
+        ordered_option_ids: ans?.ordered_option_ids ?? null,
+        options: opts,
+      };
+    });
+
+    return {
+      attempt_id: att.id,
+      student_id: att.student_id,
+      student_name: stName,
+      submitted_at: att.submitted_at,
+      score: Number(att.score),
+      max_score: Number(att.max_score),
+      percentage: Number(att.percentage),
+      answers: formattedAnswers,
+    };
+  });
+
+  return { success: true, data: result };
 }
 
 /** Publish / unpublish. A quiz needs at least one question to go live. */

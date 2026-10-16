@@ -10,18 +10,23 @@ import { createClient } from "@/lib/supabase/server";
 import { requireAuth } from "@/lib/db/auth";
 import { logAudit } from "@/lib/db/audit";
 
+import type { QuizQuestionType } from "@/lib/types/database";
+
+export interface QuizPaperQuestion {
+  id: string;
+  text: string;
+  marks: number;
+  question_type: QuizQuestionType;
+  options: { id: string; text: string }[];
+}
+
 export interface QuizPaper {
   id: string;
   title: string;
   instructions: string | null;
   time_limit_minutes: number | null;
   already_attempted: boolean;
-  questions: {
-    id: string;
-    text: string;
-    marks: number;
-    options: { id: string; text: string }[];
-  }[];
+  questions: QuizPaperQuestion[];
 }
 
 export interface QuizResult {
@@ -29,6 +34,14 @@ export interface QuizResult {
   score: number;
   max_score: number;
   percentage: number;
+}
+
+export interface QuizAnswerSubmission {
+  question_id: string;
+  option_id?: string | null;
+  selected_option_ids?: string[] | null;
+  text_answer?: string | null;
+  ordered_option_ids?: string[] | null;
 }
 
 /** Fetch the paper to sit (options carry no answer key). */
@@ -44,10 +57,10 @@ export async function loadPaper(
   return { success: true, paper: data as QuizPaper };
 }
 
-/** Grade + record one attempt. `answers` is [{ question_id, option_id|null }]. */
+/** Grade + record one attempt. Supports single choice, true/false, multi-select, ordering, fill-in-blank. */
 export async function submitQuiz(
   quizId: string,
-  answers: { question_id: string; option_id: string | null }[]
+  answers: QuizAnswerSubmission[]
 ): Promise<{ success: boolean; error?: string; result?: QuizResult }> {
   const auth = await requireAuth();
   if (!auth.ok) return { success: false, error: auth.error };

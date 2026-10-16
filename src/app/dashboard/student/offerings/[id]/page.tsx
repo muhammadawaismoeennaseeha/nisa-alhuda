@@ -330,6 +330,41 @@ export default async function StudentLearningHubPage({
     }
   }
 
+  // ── Assignment Papers (PDF / File Question Papers) ──
+  const { data: assignmentPaperRows } = await supabase
+    .from("assignment_papers")
+    .select("*, submissions:assignment_submissions(*)")
+    .eq("offering_id", id)
+    .eq("is_published", true);
+
+  const studentAssignmentListItems = (assignmentPaperRows ?? []).map((a: any) => {
+    const sub = (a.submissions ?? []).find((s: any) => s.student_id === user.id) ?? null;
+    const subj = typedSubjects.find((s) => s.id === a.subject_id);
+    return {
+      id: a.id,
+      subjectId: a.subject_id,
+      subjectTitle: subj?.title ?? "Subject",
+      offeringId: id,
+      title: a.title,
+      instructions: a.instructions,
+      questionPaperUrl: a.question_paper_url,
+      fileName: a.file_name,
+      maxMarks: Number(a.max_marks),
+      dueDate: a.due_date,
+      submission: sub
+        ? {
+            id: sub.id,
+            answerSheetUrl: sub.answer_sheet_url,
+            fileName: sub.file_name,
+            score: sub.score !== null ? Number(sub.score) : null,
+            feedback: sub.feedback,
+            submittedAt: sub.submitted_at,
+            gradedAt: sub.graded_at,
+          }
+        : null,
+    };
+  });
+
   const gradeGroups: StudentSubjectGrades[] = typedSubjects
     .map((s) => {
       const items: StudentGradeItem[] = [];
@@ -342,6 +377,16 @@ export default async function StudentLearningHubPage({
           detail: q.attempt
             ? `${q.attempt.score}/${q.attempt.max_score}`
             : "Not attempted",
+        });
+      }
+      for (const a of studentAssignmentListItems.filter((x: any) => x.subjectId === s.id)) {
+        const hasScore = a.submission?.score !== null && a.submission?.score !== undefined;
+        items.push({
+          kind: "assessment",
+          label: a.title,
+          typeLabel: "Written Paper",
+          percentage: hasScore ? gradePct(a.submission!.score!, a.maxMarks) : null,
+          detail: hasScore ? `${a.submission!.score}/${a.maxMarks}` : (a.submission ? "Submitted — awaiting grade" : "Not submitted"),
         });
       }
       for (const a of assessmentsBySubject[s.id] ?? []) {
@@ -565,7 +610,12 @@ export default async function StudentLearningHubPage({
             </p>
           </div>
         ) : (
-          <StudentCourseTabs quizGroups={studentQuizGroups} gradeGroups={gradeGroups}>
+          <StudentCourseTabs
+            quizGroups={studentQuizGroups}
+            fileAssignments={studentAssignmentListItems}
+            offeringId={id}
+            gradeGroups={gradeGroups}
+          >
             <SubjectAccordion
               subjects={typedSubjects}
               lessonsBySubject={classLessonsBySubject}
