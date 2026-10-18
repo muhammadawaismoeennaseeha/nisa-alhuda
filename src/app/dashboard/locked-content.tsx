@@ -1,14 +1,15 @@
 /**
  * LockedContent — shown INSIDE the dashboard shell (sidebar + header still
- * visible) when a student is past the payment-block threshold. The LMS UI
- * stays intact so the sister can navigate around, log out, or update
- * settings while she's overdue — every non-payment route just renders this
- * card in the main content area.
+ * visible) when a student is past the payment-block threshold, or when an
+ * admin has manually locked her account. The LMS UI stays intact so the
+ * sister can navigate around, log out, or update settings while she's
+ * overdue — every non-payment route just renders this card in the main
+ * content area.
  *
  * Wording for the headline is fixed by spec — do not soften it without
  * checking with the admin first.
  */
-import { AlertOctagon, Wallet } from "lucide-react";
+import { AlertOctagon, Lock, Wallet } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 import { buttonVariants } from "@/components/ui/button";
 import { formatMonthlyAmount } from "@/lib/monthly-payments";
@@ -24,6 +25,62 @@ export function LockedContent({ debt, fullName }: Props) {
   const showCombinedTotal =
     debt.currencies.length === 1 && debt.entries.length > 1;
 
+  // ── Manual lock (admin override) ─────────────────────────────────────────
+  if (debt.isManualLock) {
+    return (
+      <div className="flex items-start justify-center py-4 md:py-8">
+        <div className="w-full max-w-lg">
+          <Card className="border-amber-200 dark:border-amber-900">
+            <CardContent className="p-6 md:p-8">
+              <div className="mb-4 flex items-center gap-3">
+                <span className="flex h-11 w-11 shrink-0 items-center justify-center rounded-full bg-amber-100 text-amber-600 dark:bg-amber-950/40 dark:text-amber-400">
+                  <Lock className="h-6 w-6" />
+                </span>
+                <div className="min-w-0">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400">
+                    Access restricted
+                  </p>
+                  <p className="truncate text-sm text-muted-foreground">
+                    Assalamu alaikum, {fullName || "Sister"}
+                  </p>
+                </div>
+              </div>
+
+              <h1 className="mb-3 font-heading text-xl font-semibold leading-snug">
+                Your account access has been temporarily restricted by admin
+              </h1>
+
+              <p className="mb-5 text-sm text-muted-foreground">
+                Your portal access has been manually restricted by an
+                administrator. Please contact us to resolve this.
+              </p>
+
+              {debt.manualLockNote && (
+                <div className="mb-5 rounded-xl border border-amber-200 bg-amber-50/60 p-3 text-sm dark:border-amber-900/60 dark:bg-amber-950/20">
+                  <p className="text-xs font-semibold uppercase tracking-wide text-amber-700 dark:text-amber-400 mb-1">
+                    Admin note
+                  </p>
+                  <p className="text-muted-foreground">{debt.manualLockNote}</p>
+                </div>
+              )}
+
+              <p className="mt-4 border-t pt-4 text-center text-xs text-muted-foreground">
+                Need help? Email{" "}
+                <a
+                  href="mailto:support@nisaalhuda.org"
+                  className="font-medium underline"
+                >
+                  support@nisaalhuda.org
+                </a>
+              </p>
+            </CardContent>
+          </Card>
+        </div>
+      </div>
+    );
+  }
+
+  // ── Auto payment block ────────────────────────────────────────────────────
   return (
     <div className="flex items-start justify-center py-4 md:py-8">
       <div className="w-full max-w-lg">

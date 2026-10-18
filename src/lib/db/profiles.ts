@@ -10,7 +10,7 @@ import type { Profile, UserRole } from "@/lib/types/database";
 
 /** Fields returned by every profile query — avoids select("*") scatter. */
 const PROFILE_SELECT =
-  "id, full_name, avatar_url, role, roles, phone, is_suspended, must_change_password, created_at, updated_at";
+  "id, full_name, avatar_url, role, roles, phone, is_suspended, must_change_password, lock_override, lock_override_note, lock_override_at, lock_override_by, created_at, updated_at";
 
 /** Fetch the caller's own profile. Returns null if not authenticated or not found. */
 export async function getOwnProfile(): Promise<Profile | null> {

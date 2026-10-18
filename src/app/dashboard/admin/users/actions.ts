@@ -254,3 +254,67 @@ export async function setUserPassword(
 
   return { success: true, email: authUser.user.email || undefined };
 }
+
+export interface SetUserLockOverrideResult {
+  success: boolean;
+  error?: string;
+}
+
+/**
+ * Admin manual lock/unlock override.
+ *
+ * Sets `lock_override` on the target student's profile:
+ *   true  → force-lock (blocks portal even if they've paid)
+ *   false → force-unlock (bypasses auto payment-block)
+ *   null  → clear override, revert to automatic behaviour
+ *
+ * Note is stored as `lock_override_note` and is shown on the
+ * student's blocked screen when override=true.
+ */
+export async function setUserLockOverride(
+  targetUserId: string,
+  override: boolean | null,
+  note?: string
+): Promise<SetUserLockOverrideResult> {
+  const auth = await requireRole(["admin"]);
+  if (!auth.ok) return { success: false, error: auth.error };
+
+  if (!targetUserId) return { success: false, error: "Missing user id." };
+  if (targetUserId === auth.userId) {
+    return {
+      success: false,
+      error: "You cannot change your own lock override.",
+    };
+  }
+
+  const admin = createAdminClient();
+  const { error } = await admin
+    .from("profiles")
+    .update({
+      lock_override: override,
+      lock_override_note: override === true ? (note ?? null) : null,
+      lock_override_at: new Date().toISOString(),
+      lock_override_by: auth.userId,
+    })
+    .eq("id", targetUserId);
+
+  if (error) {
+    console.error("[setUserLockOverride] DB error:", error);
+    return { success: false, error: error.message };
+  }
+
+  const actionLabel =
+    override === true ? "force-locked" : override === false ? "force-unlocked" : "override cleared (auto)";
+
+  await logAudit({
+    actorId: auth.userId,
+    action: "user.lock_override_set",
+    entityType: "profile",
+    entityId: targetUserId,
+    summary: `Portal access ${actionLabel}${note ? `: ${note}` : ""}`,
+    metadata: { override, note: note ?? null },
+  });
+
+  return { success: true };
+}
+

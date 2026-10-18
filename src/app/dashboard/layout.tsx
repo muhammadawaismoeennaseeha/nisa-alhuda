@@ -70,7 +70,10 @@ export default async function DashboardLayout({
     );
     const onSettingsPage = pathname.startsWith("/dashboard/settings");
     if (!onPaymentPage && !onSettingsPage) {
-      const debt = await getBlockingDebt(supabase, profile.id);
+      const debt = await getBlockingDebt(supabase, profile.id, {
+        lockOverride: profile.lock_override,
+        lockOverrideNote: profile.lock_override_note,
+      });
       if (debt) {
         lockedContent = (
           <LockedContent debt={debt} fullName={profile.full_name} />

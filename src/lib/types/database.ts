@@ -42,6 +42,19 @@ export interface Profile {
   phone: string | null;
   is_suspended: boolean;
   must_change_password: boolean;
+  /**
+   * Admin manual lock override.
+   *  null  → auto (payment-block logic decides)
+   *  true  → force-locked regardless of payment status
+   *  false → force-unlocked regardless of payment status
+   */
+  lock_override: boolean | null;
+  /** Optional admin note explaining why the override was set. */
+  lock_override_note: string | null;
+  /** When the override was last changed. */
+  lock_override_at: string | null;
+  /** Which admin set the override. */
+  lock_override_by: string | null;
   created_at: string;
   updated_at: string;
 }

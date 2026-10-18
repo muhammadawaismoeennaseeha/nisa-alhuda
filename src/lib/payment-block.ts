@@ -23,6 +23,11 @@
  *  • A sister is blocked if ANY of her approved monthly enrollments lands
  *    in the blocking bucket. (She has to clear them all to unblock; a single
  *    unpaid cycle is enough to lock her out.)
+ *  • Admin override (lock_override column on profiles):
+ *    - null  → auto mode — this function's verdict is used
+ *    - true  → force-locked — returns a synthetic BlockingDebt even if
+ *              she's paid up, so she can't access the portal
+ *    - false → force-unlocked — returns null even if she's overdue
  *
  * The page-level guard lives in `src/app/dashboard/layout.tsx` — this file
  * only computes the verdict. Keeping the policy here means we can reuse it
@@ -64,6 +69,13 @@ export interface BlockingDebt {
   totalAmount: number;
   /** Distinct currency codes across `entries`. If >1, callers should show per-line totals only. */
   currencies: string[];
+  /**
+   * When true this block was set manually by an admin (lock_override=true),
+   * not triggered by unpaid fees. The UI should show a different message.
+   */
+  isManualLock?: boolean;
+  /** Admin note attached to the manual lock, if any. */
+  manualLockNote?: string | null;
 }
 
 /**
@@ -72,12 +84,45 @@ export interface BlockingDebt {
  * Called from the dashboard layout once per request for every student. If
  * this returns non-null and the request is not for the monthly-payment
  * page, the layout renders the block screen instead of the normal UI.
+ *
+ * Also accepts the profile's lock_override fields so the function can
+ * short-circuit before any DB queries when the override is set.
  */
 export async function getBlockingDebt(
   supabase: SupabaseClient,
-  profileId: string
+  profileId: string,
+  opts?: {
+    lockOverride?: boolean | null;
+    lockOverrideNote?: string | null;
+  }
 ): Promise<BlockingDebt | null> {
+  // ── Admin manual override (short-circuit before any DB work) ──────────────
+  if (opts?.lockOverride === true) {
+    // Force-locked by admin — return a synthetic debt so the layout shows
+    // the locked screen. The LockedContent component renders a different
+    // message when isManualLock=true.
+    return {
+      entries: [],
+      totalAmount: 0,
+      currencies: [],
+      isManualLock: true,
+      manualLockNote: opts.lockOverrideNote ?? null,
+    };
+  }
+  if (opts?.lockOverride === false) {
+    // Force-unlocked by admin — skip the auto-check entirely.
+    return null;
+  }
+  // ── Auto mode (lock_override === null) ────────────────────────────────────
+
   const currentCycle = firstOfMonth();
+
+  // Days since cycle start. Cycle key is YYYY-MM-27 UTC; compare against
+  // wall-clock UTC midnight so the count rolls over predictably.
+  const daysOverdue = daysSinceCycleStart(currentCycle);
+
+  // Grace period: no block in the first BLOCK_AFTER_DAYS days of a new cycle.
+  if (daysOverdue < BLOCK_AFTER_DAYS) return null;
 
   type EnrollmentRow = Enrollment & {
     offering: Pick<
@@ -102,25 +147,25 @@ export async function getBlockingDebt(
   );
   if (monthlyEnrollments.length === 0) return null;
 
-  // Pull current-cycle payment rows for all monthly enrollments in one query.
-  const { data: monthlyPayments } = await supabase
+  // Pull ALL payment rows for this student across ALL cycles — we want to
+  // detect unpaid cycles from any month, not just the current one.
+  // Filtering to the current cycle only would miss July/August arrears when
+  // the sister skips a month then submits something for a later cycle.
+  const { data: allPayments } = await supabase
     .from("monthly_payments")
-    .select("enrollment_id, status")
-    .eq("student_id", profileId)
-    .eq("cycle_month", currentCycle);
+    .select("enrollment_id, cycle_month, status")
+    .eq("student_id", profileId);
 
-  const statusByEnrollment: Record<string, string> = {};
-  for (const row of (monthlyPayments as Array<{
+  // Build a lookup: (enrollmentId, cycleMonth) → status
+  // so the inner loop can check any cycle in O(1).
+  const statusByKey: Record<string, string> = {};
+  for (const row of (allPayments as Array<{
     enrollment_id: string;
+    cycle_month: string;
     status: string;
   }> | null) ?? []) {
-    statusByEnrollment[row.enrollment_id] = row.status;
+    statusByKey[`${row.enrollment_id}::${row.cycle_month}`] = row.status;
   }
-
-  // Days since cycle start. Cycle key is YYYY-MM-27 UTC; compare against
-  // wall-clock UTC midnight so the count rolls over predictably.
-  const daysOverdue = daysSinceCycleStart(currentCycle);
-  if (daysOverdue < BLOCK_AFTER_DAYS) return null;
 
   const entries: BlockingEntry[] = [];
 
@@ -142,14 +187,48 @@ export async function getBlockingDebt(
     // Exemption: pending FA application (requested, not yet reviewed).
     if (enrollment.fa_requested && !enrollment.fa_reviewed_at) continue;
 
-    // Cycle must actually be billable for this enrollment.
+    // All cycles this enrollment has ever owed, up to and including today's.
     const owedCycles = cyclesBetween(enrollment.created_at);
-    if (!owedCycles.includes(currentCycle)) continue;
+    if (owedCycles.length === 0) continue;
 
-    const status = statusByEnrollment[enrollment.id];
+    // Find the most-recent unpaid cycle (the one that will trigger the block).
+    // We check cycles in reverse-chronological order: the newest overdue cycle
+    // is what we show to the student so she pays the current month first.
+    //
+    // A cycle is "unpaid" if its payment row is missing, or has status
+    // "owed" (cron placeholder). "pending" (uploaded, awaiting review) and
+    // "approved" are both exempt.
+    //
+    // Note: we only block if the cycle has been running for at least
+    // BLOCK_AFTER_DAYS (10) days, checked above for the current cycle.
+    // Past cycles that are still owed are automatically past that threshold
+    // and always trigger a block — she had the full grace period already.
+    let blockingCycle: string | null = null;
+    for (let i = owedCycles.length - 1; i >= 0; i--) {
+      const cycle = owedCycles[i];
+      const key = `${enrollment.id}::${cycle}`;
+      const status = statusByKey[key];
 
-    // Exemption: receipt already submitted or already approved.
-    if (status === "pending" || status === "approved") continue;
+      // Exempt if she's submitted or paid.
+      if (status === "pending" || status === "approved") continue;
+
+      // For the current cycle: only block if past grace period.
+      if (cycle === currentCycle) {
+        if (daysOverdue < BLOCK_AFTER_DAYS) continue;
+      }
+
+      // This cycle is owed (status='owed' or missing row entirely).
+      blockingCycle = cycle;
+      break; // Show the most recent unpaid cycle — one entry per enrollment.
+    }
+
+    if (!blockingCycle) continue;
+
+    // daysOverdue for the blocking cycle.
+    const cycleOverdue =
+      blockingCycle === currentCycle
+        ? daysOverdue
+        : daysSinceCycleStart(blockingCycle);
 
     const { amount, currency } = monthlyAmountForEnrollment(
       offering,
@@ -160,8 +239,8 @@ export async function getBlockingDebt(
       offeringTitle: offering.title,
       amount,
       currency,
-      cycleLabel: formatCycleMonth(currentCycle),
-      daysOverdue,
+      cycleLabel: formatCycleMonth(blockingCycle),
+      daysOverdue: cycleOverdue,
     });
   }
 

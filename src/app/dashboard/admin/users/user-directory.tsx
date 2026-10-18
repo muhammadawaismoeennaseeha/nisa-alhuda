@@ -23,6 +23,8 @@ import {
   KeyRound,
   Check,
   Lock,
+  LockOpen,
+  ShieldOff,
   Eye,
   EyeOff,
   Copy,
@@ -40,7 +42,7 @@ import {
 import { createClient } from "@/lib/supabase/client";
 import { toast } from "sonner";
 import type { Profile, UserRole } from "@/lib/types/database";
-import { updateUserRoles, resetUserPassword, setUserPassword } from "./actions";
+import { updateUserRoles, resetUserPassword, setUserPassword, setUserLockOverride } from "./actions";
 
 interface UserDirectoryProps {
   profiles: Profile[];
@@ -99,6 +101,12 @@ export function UserDirectory({
   const [newPassword, setNewPassword] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [settingPwd, startSetPwd] = useTransition();
+
+  // Lock override dialog state
+  const [lockTarget, setLockTarget] = useState<Profile | null>(null);
+  const [lockAction, setLockAction] = useState<"lock" | "unlock" | "auto">("lock");
+  const [lockNote, setLockNote] = useState("");
+  const [settingLock, startSetLock] = useTransition();
 
   // Filter profiles — match against primary OR any assigned role.
   const filtered = profiles.filter((p) => {
@@ -281,6 +289,34 @@ export function UserDirectory({
     }
   }
 
+  function openLockDialog(profile: Profile, action: "lock" | "unlock" | "auto") {
+    setLockTarget(profile);
+    setLockAction(action);
+    setLockNote("");
+  }
+
+  function confirmLockOverride() {
+    if (!lockTarget) return;
+    const override =
+      lockAction === "lock" ? true : lockAction === "unlock" ? false : null;
+    startSetLock(async () => {
+      const res = await setUserLockOverride(lockTarget.id, override, lockNote || undefined);
+      if (!res.success) {
+        toast.error(res.error || "Failed to update lock override.");
+        return;
+      }
+      const label =
+        override === true
+          ? `${lockTarget.full_name} has been manually locked.`
+          : override === false
+          ? `${lockTarget.full_name} is now force-unlocked.`
+          : `${lockTarget.full_name} reset to automatic mode.`;
+      toast.success(label);
+      setLockTarget(null);
+      router.refresh();
+    });
+  }
+
   function handleLoginAs(profile: Profile) {
     setLoginTarget(profile);
     setShowLoginDialog(true);
@@ -399,6 +435,18 @@ export function UserDirectory({
                             Suspended
                           </Badge>
                         )}
+                        {profile.lock_override === true && (
+                          <Badge variant="destructive" className="text-xs gap-1">
+                            <Lock className="h-3 w-3" />
+                            Admin Locked
+                          </Badge>
+                        )}
+                        {profile.lock_override === false && (
+                          <Badge variant="outline" className="text-xs gap-1 text-emerald-600 border-emerald-300">
+                            <LockOpen className="h-3 w-3" />
+                            Force Unlocked
+                          </Badge>
+                        )}
                         {isCurrentUser && (
                           <Badge variant="outline" className="text-xs">
                             You
@@ -501,6 +549,44 @@ export function UserDirectory({
                             <Ban className="h-3.5 w-3.5" />
                           )}
                         </Button>
+
+                        {/* Manual Lock Override */}
+                        {profile.role === "student" && (
+                          profile.lock_override === true ? (
+                            // Currently force-locked → offer unlock or reset to auto
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => openLockDialog(profile, "unlock")}
+                              title="Force-unlock portal (override fee block)"
+                              className="text-amber-600 hover:text-emerald-600"
+                            >
+                              <LockOpen className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : profile.lock_override === false ? (
+                            // Currently force-unlocked → offer lock or reset
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => openLockDialog(profile, "lock")}
+                              title="Remove force-unlock (revert to auto or lock)"
+                              className="text-emerald-600 hover:text-amber-600"
+                            >
+                              <ShieldOff className="h-3.5 w-3.5" />
+                            </Button>
+                          ) : (
+                            // No override → offer manual lock
+                            <Button
+                              variant="ghost"
+                              size="icon-sm"
+                              onClick={() => openLockDialog(profile, "lock")}
+                              title="Manually lock portal access"
+                              className="text-muted-foreground hover:text-amber-600"
+                            >
+                              <Lock className="h-3.5 w-3.5" />
+                            </Button>
+                          )
+                        )}
                       </div>
                     )}
                   </div>
@@ -746,6 +832,102 @@ export function UserDirectory({
                 Save password
               </Button>
             </div>
+          </div>
+        </DialogContent>
+      </Dialog>
+
+      {/* Lock Override Dialog */}
+      <Dialog
+        open={!!lockTarget}
+        onOpenChange={(open) => !open && !settingLock && setLockTarget(null)}
+      >
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>
+              {lockAction === "lock"
+                ? `Lock portal for ${lockTarget?.full_name}`
+                : lockAction === "unlock"
+                ? `Force-unlock portal for ${lockTarget?.full_name}`
+                : `Clear lock override for ${lockTarget?.full_name}`}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 mt-2">
+            {lockAction === "lock" && (
+              <>
+                <p className="text-sm text-muted-foreground">
+                  This will block{" "}
+                  <strong>{lockTarget?.full_name}</strong>&apos;s portal access
+                  immediately, even if her fees are up to date. She will see
+                  an &ldquo;Access Restricted&rdquo; screen until you unlock
+                  her or clear this override.
+                </p>
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium" htmlFor="lock-note">
+                    Reason / note <span className="text-muted-foreground font-normal">(shown to student, optional)</span>
+                  </label>
+                  <Input
+                    id="lock-note"
+                    value={lockNote}
+                    onChange={(e) => setLockNote(e.target.value)}
+                    placeholder="e.g. Pending document review"
+                  />
+                </div>
+              </>
+            )}
+            {lockAction === "unlock" && (
+              <p className="text-sm text-muted-foreground">
+                This will force-unlock{" "}
+                <strong>{lockTarget?.full_name}</strong>&apos;s portal,
+                bypassing the automatic fee-block entirely. She will have
+                full access regardless of payment status.
+              </p>
+            )}
+            {lockAction === "auto" && (
+              <p className="text-sm text-muted-foreground">
+                This clears any manual override and returns{" "}
+                <strong>{lockTarget?.full_name}</strong> to automatic mode —
+                the fee-block logic will decide her access going forward.
+              </p>
+            )}
+
+            <div className="flex gap-2 justify-end">
+              <Button
+                variant="outline"
+                onClick={() => setLockTarget(null)}
+                disabled={settingLock}
+              >
+                Cancel
+              </Button>
+              <Button
+                onClick={confirmLockOverride}
+                disabled={settingLock}
+                variant={lockAction === "lock" ? "destructive" : "default"}
+              >
+                {settingLock && <Loader2 className="h-4 w-4 mr-2 animate-spin" />}
+                {lockAction === "lock" ? (
+                  <><Lock className="h-4 w-4 mr-2" />Lock portal</>
+                ) : lockAction === "unlock" ? (
+                  <><LockOpen className="h-4 w-4 mr-2" />Force unlock
+                  </>
+                ) : (
+                  "Clear override"
+                )}
+              </Button>
+            </div>
+
+            {/* If already overridden, also offer the reset-to-auto option */}
+            {lockTarget?.lock_override !== null && lockTarget?.lock_override !== undefined && (
+              <p className="text-center text-xs text-muted-foreground">
+                Or{" "}
+                <button
+                  type="button"
+                  className="underline hover:text-foreground"
+                  onClick={() => setLockAction("auto")}
+                >
+                  clear override (revert to auto)
+                </button>
+              </p>
+            )}
           </div>
         </DialogContent>
       </Dialog>
