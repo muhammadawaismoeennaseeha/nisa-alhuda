@@ -47,14 +47,19 @@ export interface Profile {
    *  null  → auto (payment-block logic decides)
    *  true  → force-locked regardless of payment status
    *  false → force-unlocked regardless of payment status
+   *
+   * The four lock_override_* fields are `undefined` on every user-scoped
+   * read: migration 046 revoked them from anon/authenticated, so only
+   * service-role queries (PROFILE_SELECT_ADMIN) populate them. A student
+   * reads her own via the `my_lock_state()` RPC.
    */
-  lock_override: boolean | null;
+  lock_override?: boolean | null;
   /** Optional admin note explaining why the override was set. */
-  lock_override_note: string | null;
+  lock_override_note?: string | null;
   /** When the override was last changed. */
-  lock_override_at: string | null;
+  lock_override_at?: string | null;
   /** Which admin set the override. */
-  lock_override_by: string | null;
+  lock_override_by?: string | null;
   created_at: string;
   updated_at: string;
 }

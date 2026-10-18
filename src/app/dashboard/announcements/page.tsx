@@ -4,6 +4,7 @@
  * Students see a read-only feed of announcements relevant to them.
  */
 import { createClient } from "@/lib/supabase/server";
+import { PROFILE_SELECT } from "@/lib/db/profiles";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Megaphone, Pin } from "lucide-react";
@@ -22,7 +23,7 @@ export default async function AnnouncementsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select(PROFILE_SELECT)
     .eq("id", user.id)
     .single<Profile>();
 

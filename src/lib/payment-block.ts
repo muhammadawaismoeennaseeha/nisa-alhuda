@@ -119,10 +119,13 @@ export async function getBlockingDebt(
 
   // Days since cycle start. Cycle key is YYYY-MM-27 UTC; compare against
   // wall-clock UTC midnight so the count rolls over predictably.
+  //
+  // NOTE: the grace period is applied PER CYCLE inside the loop below, not
+  // here. Returning early on `daysOverdue < BLOCK_AFTER_DAYS` would also
+  // suppress arrears from *previous* months for the first 10 days of every
+  // new cycle, letting a sister who has never paid walk in from the 27th to
+  // the 5th, every single month.
   const daysOverdue = daysSinceCycleStart(currentCycle);
-
-  // Grace period: no block in the first BLOCK_AFTER_DAYS days of a new cycle.
-  if (daysOverdue < BLOCK_AFTER_DAYS) return null;
 
   type EnrollmentRow = Enrollment & {
     offering: Pick<
@@ -200,9 +203,10 @@ export async function getBlockingDebt(
     // "approved" are both exempt.
     //
     // Note: we only block if the cycle has been running for at least
-    // BLOCK_AFTER_DAYS (10) days, checked above for the current cycle.
-    // Past cycles that are still owed are automatically past that threshold
-    // and always trigger a block — she had the full grace period already.
+    // BLOCK_AFTER_DAYS (10) days. That check is applied to the current cycle
+    // inside the loop. Past cycles that are still owed are automatically past
+    // that threshold and always trigger a block — she had the full grace
+    // period already.
     let blockingCycle: string | null = null;
     for (let i = owedCycles.length - 1; i >= 0; i--) {
       const cycle = owedCycles[i];

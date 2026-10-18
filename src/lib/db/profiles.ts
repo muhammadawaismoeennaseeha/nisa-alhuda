@@ -8,9 +8,24 @@ import { createClient } from "@/lib/supabase/server";
 import { createAdminClient } from "@/lib/supabase/admin";
 import type { Profile, UserRole } from "@/lib/types/database";
 
-/** Fields returned by every profile query — avoids select("*") scatter. */
-const PROFILE_SELECT =
-  "id, full_name, avatar_url, role, roles, phone, is_suspended, must_change_password, lock_override, lock_override_note, lock_override_at, lock_override_by, created_at, updated_at";
+/**
+ * Fields any signed-in (or anonymous) caller may read — avoids select("*")
+ * scatter, and matches the column GRANT in migration 046 exactly.
+ *
+ * `select("*")` on profiles no longer works from a user-scoped client: the
+ * lock_override columns are revoked from anon/authenticated, and `*` expands
+ * to every column including those. Always use one of these two constants.
+ */
+export const PROFILE_SELECT =
+  "id, full_name, avatar_url, role, roles, phone, is_suspended, must_change_password, created_at, updated_at";
+
+/**
+ * The above plus the admin lock-override columns. ONLY valid on a
+ * service-role (admin) client — a user-scoped query with these columns is
+ * rejected by the column grant.
+ */
+export const PROFILE_SELECT_ADMIN =
+  "id, full_name, avatar_url, role, roles, phone, is_suspended, must_change_password, created_at, updated_at, lock_override, lock_override_note, lock_override_at, lock_override_by";
 
 /** Fetch the caller's own profile. Returns null if not authenticated or not found. */
 export async function getOwnProfile(): Promise<Profile | null> {
@@ -34,7 +49,7 @@ export async function getProfileById(userId: string): Promise<Profile | null> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("profiles")
-    .select(PROFILE_SELECT)
+    .select(PROFILE_SELECT_ADMIN)
     .eq("id", userId)
     .single<Profile>();
 
@@ -46,7 +61,7 @@ export async function getProfilesByRole(role: UserRole): Promise<Profile[]> {
   const admin = createAdminClient();
   const { data } = await admin
     .from("profiles")
-    .select(PROFILE_SELECT)
+    .select(PROFILE_SELECT_ADMIN)
     .eq("role", role)
     .order("full_name");
 

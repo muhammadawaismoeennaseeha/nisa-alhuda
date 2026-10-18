@@ -337,6 +337,21 @@ export default async function StudentLearningHubPage({
     .eq("offering_id", id)
     .eq("is_published", true);
 
+  // `resources` is a private bucket — hand the client short-lived signed
+  // links rather than public URLs (which simply 404 on a private bucket).
+  const paperPaths = (assignmentPaperRows ?? [])
+    .map((a: any) => a.question_paper_url)
+    .filter(Boolean) as string[];
+  const paperHrefByPath = new Map<string, string>();
+  if (paperPaths.length > 0) {
+    const { data: signedPapers } = await supabase.storage
+      .from("resources")
+      .createSignedUrls(paperPaths, 60 * 60);
+    for (const row of signedPapers ?? []) {
+      if (row.path && row.signedUrl) paperHrefByPath.set(row.path, row.signedUrl);
+    }
+  }
+
   const studentAssignmentListItems = (assignmentPaperRows ?? []).map((a: any) => {
     const sub = (a.submissions ?? []).find((s: any) => s.student_id === user.id) ?? null;
     const subj = typedSubjects.find((s) => s.id === a.subject_id);
@@ -347,7 +362,7 @@ export default async function StudentLearningHubPage({
       offeringId: id,
       title: a.title,
       instructions: a.instructions,
-      questionPaperUrl: a.question_paper_url,
+      questionPaperHref: paperHrefByPath.get(a.question_paper_url) ?? null,
       fileName: a.file_name,
       maxMarks: Number(a.max_marks),
       dueDate: a.due_date,

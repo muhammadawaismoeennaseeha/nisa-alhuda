@@ -9,6 +9,10 @@ import { logAudit } from "@/lib/db/audit";
 type Result<T = void> = { success: boolean; error?: string; data?: T };
 const STAFF = ["admin", "instructor", "ta"] as const;
 
+/** How long a signed answer-sheet link stays valid. Long enough to open and
+ *  mark a batch of submissions, short enough that a copied link goes stale. */
+const ANSWER_SHEET_URL_TTL_SECONDS = 60 * 60;
+
 export interface AssignmentPaperRow {
   id: string;
   subject_id: string;
@@ -31,6 +35,12 @@ export interface AssignmentSubmissionDetail {
   student_id: string;
   student_name: string;
   answer_sheet_url: string;
+  /**
+   * Short-lived signed URL for `answer_sheet_url`. The `resources` bucket is
+   * private, so a public URL 404s — and since migration 044 the submissions
+   * prefix is readable only by its owner and staff anyway.
+   */
+  answer_sheet_href: string | null;
   file_name: string;
   file_size: number | null;
   score: number | null;
@@ -108,6 +118,16 @@ export async function setAssignmentPublished(
   if (!auth.ok) return { success: false, error: auth.error };
 
   const admin = createAdminClient();
+  // A TA is course-scoped — resolve the assignment's offering before
+  // touching it, same pattern as quiz-actions.ts.
+  const { data: _scope } = await admin
+    .from("assignment_papers")
+    .select("offering_id")
+    .eq("id", assignmentId)
+    .maybeSingle();
+  const denied = await assertAssistsIfTA(auth, _scope?.offering_id);
+  if (denied) return { success: false, error: denied.error };
+
   const { error } = await admin
     .from("assignment_papers")
     .update({ is_published: isPublished })
@@ -128,6 +148,16 @@ export async function deleteAssignmentPaper(
   if (!auth.ok) return { success: false, error: auth.error };
 
   const admin = createAdminClient();
+  // A TA is course-scoped — resolve the assignment's offering before
+  // touching it, same pattern as quiz-actions.ts.
+  const { data: _scope } = await admin
+    .from("assignment_papers")
+    .select("offering_id")
+    .eq("id", assignmentId)
+    .maybeSingle();
+  const denied = await assertAssistsIfTA(auth, _scope?.offering_id);
+  if (denied) return { success: false, error: denied.error };
+
   const { error } = await admin
     .from("assignment_papers")
     .delete()
@@ -154,6 +184,15 @@ export async function gradeAssignmentSubmission(
   }
 
   const admin = createAdminClient();
+  // A TA may only grade submissions on a course she assists.
+  const { data: _scope } = await admin
+    .from("assignment_submissions")
+    .select("assignment:assignment_papers!assignment_submissions_assignment_id_fkey(offering_id)")
+    .eq("id", submissionId)
+    .maybeSingle<{ assignment: { offering_id: string } | null }>();
+  const denied = await assertAssistsIfTA(auth, _scope?.assignment?.offering_id);
+  if (denied) return { success: false, error: denied.error };
+
   const { data: sub, error: subErr } = await admin
     .from("assignment_submissions")
     .update({
@@ -182,6 +221,16 @@ export async function getAssignmentSubmissions(
   if (!auth.ok) return { success: false, error: auth.error };
 
   const admin = createAdminClient();
+  // A TA is course-scoped — resolve the assignment's offering before
+  // touching it, same pattern as quiz-actions.ts.
+  const { data: _scope } = await admin
+    .from("assignment_papers")
+    .select("offering_id")
+    .eq("id", assignmentId)
+    .maybeSingle();
+  const denied = await assertAssistsIfTA(auth, _scope?.offering_id);
+  if (denied) return { success: false, error: denied.error };
+
   const { data, error } = await admin
     .from("assignment_submissions")
     .select(`
@@ -202,6 +251,20 @@ export async function getAssignmentSubmissions(
 
   if (error) return { success: false, error: error.message };
 
+  // Sign every answer sheet in one round trip (private bucket — see 044).
+  const paths = (data ?? [])
+    .map((s) => s.answer_sheet_url)
+    .filter((p): p is string => Boolean(p));
+  const hrefByPath = new Map<string, string>();
+  if (paths.length > 0) {
+    const { data: signed } = await admin.storage
+      .from("resources")
+      .createSignedUrls(paths, ANSWER_SHEET_URL_TTL_SECONDS);
+    for (const row of signed ?? []) {
+      if (row.path && row.signedUrl) hrefByPath.set(row.path, row.signedUrl);
+    }
+  }
+
   const formatted: AssignmentSubmissionDetail[] = (data ?? []).map((s: any) => ({
     id: s.id,
     assignment_id: s.assignment_id,
@@ -210,6 +273,7 @@ export async function getAssignmentSubmissions(
       ? s.student[0]?.full_name ?? "Student"
       : s.student?.full_name ?? "Student",
     answer_sheet_url: s.answer_sheet_url,
+    answer_sheet_href: hrefByPath.get(s.answer_sheet_url) ?? null,
     file_name: s.file_name,
     file_size: s.file_size,
     score: s.score !== null ? Number(s.score) : null,
@@ -221,7 +285,16 @@ export async function getAssignmentSubmissions(
   return { success: true, data: formatted };
 }
 
-/** Student submits / re-submits their completed answer sheet */
+/**
+ * Student submits / re-submits their completed answer sheet.
+ *
+ * Deliberately the USER-SCOPED client, not the service-role one. The
+ * `assignment_submissions` policies from migration 042 are what enforce the
+ * three rules that matter here — the assignment is published, she's enrolled
+ * in its offering, and the row is her own. A service-role upsert bypasses
+ * RLS entirely, so anyone with a session could have POSTed a submission to
+ * any assignment id, for any assignment, enrolled or not.
+ */
 export async function submitStudentAnswerSheet(
   assignmentId: string,
   offeringId: string,
@@ -233,8 +306,7 @@ export async function submitStudentAnswerSheet(
   const { data: { user } } = await supabase.auth.getUser();
   if (!user) return { success: false, error: "You must be logged in to submit." };
 
-  const admin = createAdminClient();
-  const { error } = await admin
+  const { error } = await supabase
     .from("assignment_submissions")
     .upsert(
       {
@@ -248,7 +320,17 @@ export async function submitStudentAnswerSheet(
       { onConflict: "assignment_id,student_id" }
     );
 
-  if (error) return { success: false, error: error.message };
+  if (error) {
+    // 42501 = row-level security violation: not enrolled, or the
+    // assignment isn't published. Don't leak which.
+    return {
+      success: false,
+      error:
+        error.code === "42501"
+          ? "This assignment isn't open for submissions from your account."
+          : error.message,
+    };
+  }
 
   revalidatePath(`/dashboard/student/offerings/${offeringId}`);
   return { success: true };

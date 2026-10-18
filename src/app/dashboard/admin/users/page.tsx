@@ -3,6 +3,8 @@
  * Features: search, role filter, login-as-user, ban/suspend.
  */
 import { createClient } from "@/lib/supabase/server";
+import { createAdminClient } from "@/lib/supabase/admin";
+import { PROFILE_SELECT_ADMIN } from "@/lib/db/profiles";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Users } from "lucide-react";
@@ -31,10 +33,13 @@ export default async function AdminUsersPage() {
     );
   }
 
-  // Fetch all profiles
-  const { data: profiles } = await supabase
+  // Fetch all profiles. Service-role client, deliberately: the lock_override
+  // columns are not readable by `authenticated` (migration 046) and this
+  // directory shows them. The admin-role check above is the gate.
+  const admin = createAdminClient();
+  const { data: profiles } = await admin
     .from("profiles")
-    .select("*")
+    .select(PROFILE_SELECT_ADMIN)
     .order("created_at", { ascending: false });
 
   // Get enrollment counts per student

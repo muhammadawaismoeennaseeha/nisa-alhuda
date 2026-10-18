@@ -31,7 +31,8 @@ export interface StudentAssignmentItem {
   offeringId: string;
   title: string;
   instructions: string | null;
-  questionPaperUrl: string;
+  /** Short-lived signed link, built on the server (private bucket). */
+  questionPaperHref: string | null;
   fileName: string;
   maxMarks: number;
   dueDate: string | null;
@@ -63,8 +64,20 @@ export function StudentAssignmentList({
   ) {
     setUploadingId(assignmentId);
     const supabase = createClient();
+    const {
+      data: { user },
+    } = await supabase.auth.getUser();
+    if (!user) {
+      setUploadingId(null);
+      toast.error("Your session expired — please sign in again.");
+      return;
+    }
+
     const safeName = file.name.replace(/[^a-zA-Z0-9._-]/g, "_").toLowerCase();
-    const storagePath = `student-submissions/${assignmentId}/${Date.now()}-${safeName}`;
+    // Path contract enforced by the storage policy in migration 044:
+    // student-submissions/<assignment>/<student>/<file>. The student id
+    // segment is what lets the policy allow her folder and only hers.
+    const storagePath = `student-submissions/${assignmentId}/${user.id}/${Date.now()}-${safeName}`;
 
     const { error: uploadError } = await supabase.storage
       .from("resources")
@@ -109,11 +122,6 @@ export function StudentAssignmentList({
 
       <div className="space-y-3">
         {assignments.map((a) => {
-          const supabase = createClient();
-          const { data: qData } = supabase.storage
-            .from("resources")
-            .getPublicUrl(a.questionPaperUrl);
-
           const isGraded = a.submission?.score !== null && a.submission?.score !== undefined;
           const isSubmitted = !!a.submission;
 
@@ -155,15 +163,21 @@ export function StudentAssignmentList({
                   )}
                 </div>
 
-                <a
-                  href={qData.publicUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className={cn(courseButton, "press text-xs font-semibold gap-1.5 self-start sm:self-auto")}
-                >
-                  <Download className="h-3.5 w-3.5" />
-                  Download Question Paper ({a.fileName})
-                </a>
+                {a.questionPaperHref ? (
+                  <a
+                    href={a.questionPaperHref}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className={cn(courseButton, "press text-xs font-semibold gap-1.5 self-start sm:self-auto")}
+                  >
+                    <Download className="h-3.5 w-3.5" />
+                    Download Question Paper ({a.fileName})
+                  </a>
+                ) : (
+                  <span className="text-[11px] text-muted-foreground self-start sm:self-auto">
+                    Question paper link unavailable — refresh the page.
+                  </span>
+                )}
               </div>
 
               {/* Feedback banner if graded */}

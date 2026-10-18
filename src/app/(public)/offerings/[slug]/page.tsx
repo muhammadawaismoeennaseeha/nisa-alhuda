@@ -36,6 +36,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { createClient } from "@/lib/supabase/server";
+import { PROFILE_SELECT } from "@/lib/db/profiles";
 import { cn } from "@/lib/utils";
 import { FloatingBlossoms } from "@/components/landing/florals";
 import {
@@ -103,7 +104,7 @@ export default async function OfferingDetailPage({
   if (offering.instructor_id) {
     const { data } = await supabase
       .from("profiles")
-      .select("*")
+      .select(PROFILE_SELECT)
       .eq("id", offering.instructor_id)
       .single<Profile>();
     instructor = data;

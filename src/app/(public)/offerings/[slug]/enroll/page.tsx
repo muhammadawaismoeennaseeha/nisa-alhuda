@@ -11,6 +11,7 @@
 import { notFound } from "next/navigation";
 import type { Metadata } from "next";
 import { createClient } from "@/lib/supabase/server";
+import { PROFILE_SELECT } from "@/lib/db/profiles";
 import { createAdminClient } from "@/lib/supabase/admin";
 import { EnrollmentWizard } from "./enrollment-wizard";
 import { Card, CardContent } from "@/components/ui/card";
@@ -81,7 +82,7 @@ export default async function EnrollPage({
     // Fetch profile for pre-filling
     const { data: p } = await supabase
       .from("profiles")
-      .select("*")
+      .select(PROFILE_SELECT)
       .eq("id", user.id)
       .single<Profile>();
     profile = p;

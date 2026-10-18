@@ -30,7 +30,7 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
 
     const supabase = createClient();
 
-    const { error } = await supabase.auth.signInWithPassword({
+    const { data: signIn, error } = await supabase.auth.signInWithPassword({
       email,
       password,
     });
@@ -44,10 +44,15 @@ export function LoginForm({ redirectTo }: LoginFormProps) {
     // Validate redirect path against the user's role to prevent cross-role access.
     let safeDest = redirectTo || "/dashboard";
     if (redirectTo) {
+      // Must be scoped to the signed-in user: the profiles SELECT policy is
+      // `USING (true)`, so an unfiltered .single() matches every row, fails
+      // with PGRST116 and leaves `role` undefined — which silently skipped
+      // every check below and let any ?redirectTo through unvalidated.
       const { data: profile } = await supabase
         .from("profiles")
         .select("role")
-        .single();
+        .eq("id", signIn.user?.id ?? "")
+        .maybeSingle();
       const role = profile?.role;
 
       if (

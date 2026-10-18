@@ -58,6 +58,9 @@ export function QuizRunner({ quizzes }: { quizzes: StudentQuiz[] }) {
   const [multiAnswers, setMultiAnswers] = useState<Record<string, string[]>>({});
   const [textAnswers, setTextAnswers] = useState<Record<string, string>>({});
   const [orderingAnswers, setOrderingAnswers] = useState<Record<string, { id: string; text: string }[]>>({});
+  // Ordering questions arrive pre-filled with the server's shuffle, so the
+  // state alone can't tell "arranged" from "never touched". Track the moves.
+  const [orderingTouched, setOrderingTouched] = useState<Record<string, boolean>>({});
 
   const [loadingId, setLoadingId] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -83,6 +86,7 @@ export function QuizRunner({ quizzes }: { quizzes: StudentQuiz[] }) {
       }
     }
     setOrderingAnswers(initialOrdering);
+    setOrderingTouched({});
 
     setResult(null);
     setPaper(res.paper);
@@ -95,6 +99,7 @@ export function QuizRunner({ quizzes }: { quizzes: StudentQuiz[] }) {
     setMultiAnswers({});
     setTextAnswers({});
     setOrderingAnswers({});
+    setOrderingTouched({});
     router.refresh();
   }
 
@@ -113,6 +118,7 @@ export function QuizRunner({ quizzes }: { quizzes: StudentQuiz[] }) {
       const items = [...(prev[questionId] || [])];
       const targetIdx = direction === "up" ? index - 1 : index + 1;
       if (targetIdx < 0 || targetIdx >= items.length) return prev;
+      setOrderingTouched((t) => (t[questionId] ? t : { ...t, [questionId]: true }));
       const temp = items[index];
       items[index] = items[targetIdx];
       items[targetIdx] = temp;
@@ -132,6 +138,9 @@ export function QuizRunner({ quizzes }: { quizzes: StudentQuiz[] }) {
         if (!multiAnswers[q.id] || multiAnswers[q.id].length === 0) unanswered++;
       } else if (type === "fill_in_blank") {
         if (!textAnswers[q.id] || !textAnswers[q.id].trim()) unanswered++;
+      } else if (type === "ordering") {
+        // Submitting the shuffle untouched is almost never a real answer.
+        if (!orderingTouched[q.id]) unanswered++;
       }
     }
 

@@ -448,8 +448,6 @@ function AssignmentGradingDialog({
           ) : (
             <div className="space-y-4">
               {submissions.map((s) => {
-                const supabase = createClient();
-                const { data } = supabase.storage.from("resources").getPublicUrl(s.answer_sheet_url);
                 const isSaving = gradingId === s.id;
 
                 return (
@@ -461,15 +459,21 @@ function AssignmentGradingDialog({
                           Submitted on {new Date(s.submitted_at).toLocaleString()}
                         </p>
                       </div>
-                      <a
-                        href={data.publicUrl}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className={cn(courseButton, "press text-xs font-semibold gap-1.5")}
-                      >
-                        <Download className="h-3.5 w-3.5" />
-                        Download Answer Sheet ({s.file_name})
-                      </a>
+                      {s.answer_sheet_href ? (
+                        <a
+                          href={s.answer_sheet_href}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className={cn(courseButton, "press text-xs font-semibold gap-1.5")}
+                        >
+                          <Download className="h-3.5 w-3.5" />
+                          Download Answer Sheet ({s.file_name})
+                        </a>
+                      ) : (
+                        <span className="text-[11px] text-muted-foreground">
+                          Link unavailable — reopen this panel to refresh it.
+                        </span>
+                      )}
                     </div>
 
                     <div className="mt-3 grid grid-cols-1 sm:grid-cols-3 gap-3">

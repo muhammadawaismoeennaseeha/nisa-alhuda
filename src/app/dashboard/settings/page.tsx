@@ -3,6 +3,7 @@
  * Accessible to all authenticated users.
  */
 import { createClient } from "@/lib/supabase/server";
+import { PROFILE_SELECT } from "@/lib/db/profiles";
 import { redirect } from "next/navigation";
 import { Settings } from "lucide-react";
 import { PageHeader } from "@/components/dashboard/page-header";
@@ -22,7 +23,7 @@ export default async function SettingsPage() {
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select(PROFILE_SELECT)
     .eq("id", user.id)
     .single<Profile>();
 

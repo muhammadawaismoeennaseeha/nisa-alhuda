@@ -20,6 +20,7 @@ import { MobileNav } from "./mobile-nav";
 import { SidebarNav, type NavSection } from "./sidebar-nav";
 import { StudentBottomNav } from "./student-bottom-nav";
 import { getBlockingDebt } from "@/lib/payment-block";
+import { PROFILE_SELECT } from "@/lib/db/profiles";
 import { LockedContent } from "./locked-content";
 import { roleLabel } from "@/lib/portal-roles";
 
@@ -38,7 +39,7 @@ export default async function DashboardLayout({
 
   const { data: profile } = await supabase
     .from("profiles")
-    .select("*")
+    .select(PROFILE_SELECT)
     .eq("id", user.id)
     .single<Profile>();
 
@@ -70,9 +71,15 @@ export default async function DashboardLayout({
     );
     const onSettingsPage = pathname.startsWith("/dashboard/settings");
     if (!onPaymentPage && !onSettingsPage) {
+      // The lock_override columns aren't readable by `authenticated`
+      // (migration 046) — this definer RPC returns just her own.
+      const { data: lock } = await supabase.rpc("my_lock_state").maybeSingle<{
+        lock_override: boolean | null;
+        lock_override_note: string | null;
+      }>();
       const debt = await getBlockingDebt(supabase, profile.id, {
-        lockOverride: profile.lock_override,
-        lockOverrideNote: profile.lock_override_note,
+        lockOverride: lock?.lock_override ?? null,
+        lockOverrideNote: lock?.lock_override_note ?? null,
       });
       if (debt) {
         lockedContent = (
