@@ -264,6 +264,47 @@ export default async function SubjectFolderPage({
     created_at: a.created_at,
   }));
 
+  // ── Course Announcements (migration 047) ──
+  // Fetch all announcements scoped to this subject, pinned first.
+  const { data: announcementRows } = await supabase
+    .from("course_announcements")
+    .select("*")
+    .eq("subject_id", id)
+    .order("is_pinned", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  type AnnouncementRowRaw = {
+    id: string;
+    offering_id: string;
+    subject_id: string | null;
+    author_id: string;
+    title: string;
+    body: string;
+    attachment_type: string;
+    attachment_url: string | null;
+    attachment_name: string | null;
+    is_pinned: boolean;
+    created_at: string;
+    updated_at: string;
+  };
+
+  const announcements = (announcementRows as AnnouncementRowRaw[] ?? []) as import("./announcement-actions").CourseAnnouncementRow[];
+
+  // Generate signed URLs for any attachments (private bucket).
+  const attachmentPaths = announcements
+    .map((a) => a.attachment_url)
+    .filter((p): p is string => !!p);
+  const announcementSignedUrls: Record<string, string> = {};
+  if (attachmentPaths.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from("resources")
+      .createSignedUrls(attachmentPaths, 60 * 60);
+    for (const row of signed ?? []) {
+      if (row.path && row.signedUrl)
+        announcementSignedUrls[row.path] = row.signedUrl;
+    }
+  }
+
   // Merge published file assignments into Gradebook as assessments
   const fileAssignmentGbAssessments = (assignmentPaperRows ?? [])
     .filter((a: any) => a.is_published)
@@ -352,6 +393,8 @@ export default async function SubjectFolderPage({
         quizzes={managedQuizzes}
         fileAssignments={managedFileAssignments}
         gradebook={gradebookData}
+        announcements={announcements}
+        announcementSignedUrls={announcementSignedUrls}
       />
     </div>
   );

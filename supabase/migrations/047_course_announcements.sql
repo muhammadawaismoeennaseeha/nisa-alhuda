@@ -1,0 +1,117 @@
+-- ============================================================
+-- Migration 047: Course Announcements (per-offering)
+-- ============================================================
+-- Adds a `course_announcements` table separate from the global
+-- `announcements` table (migration 005). These are scoped to a
+-- specific offering (and optionally a subject) so admins and
+-- instructors can post exam dates, results, class updates, etc.
+-- Only enrolled students for that offering see them.
+--
+-- Attachment types:
+--   'text'  → plain body only; no file
+--   'pdf'   → body + attachment_url pointing to a PDF
+--   'image' → body + attachment_url pointing to an image
+--
+-- Storage: attachments go into the private `resources` bucket
+-- under the `course-announcements/<offering_id>/` prefix.
+-- ============================================================
+
+CREATE TABLE IF NOT EXISTS public.course_announcements (
+  id               UUID        PRIMARY KEY DEFAULT gen_random_uuid(),
+  offering_id      UUID        NOT NULL REFERENCES public.offerings(id)  ON DELETE CASCADE,
+  subject_id       UUID        REFERENCES public.subjects(id) ON DELETE SET NULL,
+  author_id        UUID        NOT NULL REFERENCES public.profiles(id)   ON DELETE SET NULL,
+  title            TEXT        NOT NULL CHECK (char_length(title) BETWEEN 1 AND 200),
+  body             TEXT        NOT NULL DEFAULT '',
+  attachment_type  TEXT        NOT NULL DEFAULT 'text'
+                               CHECK (attachment_type IN ('text', 'pdf', 'image')),
+  attachment_url   TEXT,
+  attachment_name  TEXT,
+  is_pinned        BOOLEAN     NOT NULL DEFAULT false,
+  created_at       TIMESTAMPTZ NOT NULL DEFAULT now(),
+  updated_at       TIMESTAMPTZ NOT NULL DEFAULT now()
+);
+
+CREATE INDEX IF NOT EXISTS course_announcements_offering_idx
+  ON public.course_announcements (offering_id, created_at DESC);
+
+CREATE INDEX IF NOT EXISTS course_announcements_subject_idx
+  ON public.course_announcements (subject_id)
+  WHERE subject_id IS NOT NULL;
+
+-- ── Row Level Security ────────────────────────────────────────────────────────
+ALTER TABLE public.course_announcements ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY course_announcements_select ON public.course_announcements FOR SELECT
+  USING (
+    public.has_role('admin'::user_role)
+    OR public.has_role('instructor'::user_role)
+    OR public.has_role('ta'::user_role)
+    OR public.is_enrolled(offering_id)
+  );
+
+CREATE POLICY course_announcements_insert ON public.course_announcements FOR INSERT
+  WITH CHECK (
+    public.has_role('admin'::user_role)
+    OR public.has_role('instructor'::user_role)
+  );
+
+CREATE POLICY course_announcements_update ON public.course_announcements FOR UPDATE
+  USING (
+    public.has_role('admin'::user_role)
+    OR (public.has_role('instructor'::user_role) AND author_id = auth.uid())
+  )
+  WITH CHECK (
+    public.has_role('admin'::user_role)
+    OR (public.has_role('instructor'::user_role) AND author_id = auth.uid())
+  );
+
+CREATE POLICY course_announcements_delete ON public.course_announcements FOR DELETE
+  USING (
+    public.has_role('admin'::user_role)
+    OR (public.has_role('instructor'::user_role) AND author_id = auth.uid())
+  );
+
+-- ── Storage: announcement attachments in `resources` bucket ──────────────────
+-- Path contract: course-announcements/<offering_id>/<filename>
+
+DROP POLICY IF EXISTS "Staff can upload course announcement attachments" ON storage.objects;
+CREATE POLICY "Staff can upload course announcement attachments"
+  ON storage.objects FOR INSERT
+  WITH CHECK (
+    bucket_id = 'resources'
+    AND (storage.foldername(name))[1] = 'course-announcements'
+    AND (
+      public.has_role('admin'::user_role)
+      OR public.has_role('instructor'::user_role)
+    )
+  );
+
+DROP POLICY IF EXISTS "Staff can delete course announcement attachments" ON storage.objects;
+CREATE POLICY "Staff can delete course announcement attachments"
+  ON storage.objects FOR DELETE
+  USING (
+    bucket_id = 'resources'
+    AND (storage.foldername(name))[1] = 'course-announcements'
+    AND (
+      public.has_role('admin'::user_role)
+      OR public.has_role('instructor'::user_role)
+    )
+  );
+
+-- Reading is covered by the existing "Authenticated users can view resources"
+-- storage SELECT policy (migration 044) for non-student-submissions paths.
+
+-- ── updated_at trigger ───────────────────────────────────────────────────────
+CREATE OR REPLACE FUNCTION public.set_course_announcement_updated_at()
+RETURNS TRIGGER LANGUAGE plpgsql AS $$
+BEGIN
+  NEW.updated_at = now();
+  RETURN NEW;
+END;
+$$;
+
+DROP TRIGGER IF EXISTS trg_course_announcements_updated_at ON public.course_announcements;
+CREATE TRIGGER trg_course_announcements_updated_at
+  BEFORE UPDATE ON public.course_announcements
+  FOR EACH ROW EXECUTE FUNCTION public.set_course_announcement_updated_at();

@@ -21,7 +21,6 @@ import {
 } from "@/components/course/course-surface";
 import { cn } from "@/lib/utils";
 import {
-  getLetterGrade,
   gradeBadgeClasses,
   marksToPct,
   subjectAveragePct,
@@ -273,7 +272,7 @@ export function GradebookPanel({
                         <span className="text-stone-300 dark:text-stone-600">—</span>
                       ) : (
                         <span className={cn("inline-flex items-center gap-1 rounded-full border px-2.5 py-0.5 text-[12.5px] font-medium", gradeBadgeClasses(total))}>
-                          {total}% · {getLetterGrade(total)}
+                          {total}%
                         </span>
                       )}
                     </td>

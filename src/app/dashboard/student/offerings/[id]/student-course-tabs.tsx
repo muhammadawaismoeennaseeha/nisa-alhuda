@@ -17,12 +17,13 @@
  */
 
 import { useState } from "react";
-import { BookOpen, FileQuestion, GraduationCap } from "lucide-react";
+import { BookOpen, FileQuestion, GraduationCap, Megaphone } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { CourseTabs, type CourseTab } from "@/components/course/course-tabs";
 import { courseCard } from "@/components/course/course-surface";
 import { getLetterGrade, gradeBadgeClasses } from "@/lib/utils/grades";
 import { QuizRunner, type StudentQuiz } from "./quiz-runner";
+import { CourseAnnouncements, type StudentAnnouncementItem } from "./course-announcements";
 
 export interface SubjectQuizzes {
   subjectId: string;
@@ -49,19 +50,21 @@ export interface StudentSubjectGrades {
   total: number | null;
 }
 
-type TabKey = "materials" | "quizzes" | "grades";
+type TabKey = "materials" | "quizzes" | "grades" | "announcements";
 
 export function StudentCourseTabs({
   quizGroups,
   fileAssignments = [],
   offeringId,
   gradeGroups,
+  announcements = [],
   children,
 }: {
   quizGroups: SubjectQuizzes[];
   fileAssignments?: StudentAssignmentItem[];
   offeringId: string;
   gradeGroups: StudentSubjectGrades[];
+  announcements?: StudentAnnouncementItem[];
   children: React.ReactNode;
 }) {
   const [active, setActive] = useState<TabKey>("materials");
@@ -76,6 +79,11 @@ export function StudentCourseTabs({
       icon: FileQuestion,
     },
     { key: "grades", label: "Grades", icon: GraduationCap },
+    {
+      key: "announcements",
+      label: announcements.length > 0 ? `Announcements · ${announcements.length}` : "Announcements",
+      icon: Megaphone,
+    },
   ];
 
   return (
@@ -129,6 +137,10 @@ export function StudentCourseTabs({
       )}
 
       {active === "grades" && <GradesView groups={gradeGroups} />}
+
+      {active === "announcements" && (
+        <CourseAnnouncements items={announcements} />
+      )}
     </div>
   );
 }

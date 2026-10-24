@@ -1,7 +1,7 @@
 "use client";
 
 /**
- * Subject workspace tabs — Classes · Quizzes · Gradebook.
+ * Subject workspace tabs — Classes · Quizzes · Gradebook · Announcements.
  *
  * Ported from Naseeha's course-page tab structure (see
  * `@/components/course/course-tabs`). The subject page used to stack the
@@ -9,15 +9,15 @@
  * the fold was easy to miss. Naseeha surfaces quizzes and grading as their own
  * tabs, so a Nisa subject now does too.
  *
- * This is presentation only: `LessonList`, `QuizManager` and `GradebookPanel`
- * are unchanged and receive exactly the props they always did. No query, no
- * write, and nothing touching `recording_url` lives here — it only chooses
- * which existing panel is on screen.
+ * This is presentation only: `LessonList`, `QuizManager`, `GradebookPanel`
+ * and `AnnouncementsPanel` are unchanged and receive exactly the props they
+ * always did. No query, no write, and nothing touching `recording_url` lives
+ * here — it only chooses which existing panel is on screen.
  */
 
 import { useState, useEffect } from "react";
 import { useSearchParams, useRouter, usePathname } from "next/navigation";
-import { BookOpen, FileQuestion, GraduationCap } from "lucide-react";
+import { BookOpen, FileQuestion, GraduationCap, Megaphone } from "lucide-react";
 import { CourseTabs, type CourseTab } from "@/components/course/course-tabs";
 import { LessonList } from "./lesson-list";
 import { QuizManager, type ManagedQuiz } from "./quiz-manager";
@@ -30,6 +30,8 @@ import {
   type GbQuizScore,
 } from "./gradebook-panel";
 import { FileAssignmentManager } from "./file-assignment-manager";
+import { AnnouncementsPanel } from "./announcements-panel";
+import type { CourseAnnouncementRow } from "./announcement-actions";
 import type { AssignmentPaperRow } from "./assignment-actions";
 import type { Lesson, Resource } from "@/lib/types/database";
 
@@ -41,7 +43,7 @@ export interface GradebookData {
   quizScores: GbQuizScore[];
 }
 
-type SubjectTabKey = "classes" | "quizzes" | "gradebook";
+type SubjectTabKey = "classes" | "quizzes" | "gradebook" | "announcements";
 
 export function SubjectTabs({
   subjectId,
@@ -52,6 +54,8 @@ export function SubjectTabs({
   quizzes,
   fileAssignments = [],
   gradebook,
+  announcements = [],
+  announcementSignedUrls = {},
 }: {
   subjectId: string;
   offeringId: string;
@@ -61,19 +65,23 @@ export function SubjectTabs({
   quizzes: ManagedQuiz[];
   fileAssignments?: AssignmentPaperRow[];
   gradebook: GradebookData;
+  announcements?: CourseAnnouncementRow[];
+  announcementSignedUrls?: Record<string, string>;
 }) {
   const searchParams = useSearchParams();
   const router = useRouter();
   const pathname = usePathname();
   const tabParam = searchParams.get("tab") as SubjectTabKey | null;
+  const validTabs: SubjectTabKey[] = ["classes", "quizzes", "gradebook", "announcements"];
   const [active, setActive] = useState<SubjectTabKey>(
-    tabParam === "quizzes" || tabParam === "gradebook" ? tabParam : "classes"
+    tabParam && validTabs.includes(tabParam) ? tabParam : "classes"
   );
 
   useEffect(() => {
-    if (tabParam && (tabParam === "classes" || tabParam === "quizzes" || tabParam === "gradebook")) {
+    if (tabParam && validTabs.includes(tabParam)) {
       setActive(tabParam);
     }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tabParam]);
 
   function handleTabChange(tab: SubjectTabKey) {
@@ -92,6 +100,11 @@ export function SubjectTabs({
       icon: FileQuestion,
     },
     { key: "gradebook", label: "Gradebook", icon: GraduationCap },
+    {
+      key: "announcements",
+      label: announcements.length > 0 ? `Announcements · ${announcements.length}` : "Announcements",
+      icon: Megaphone,
+    },
   ];
 
   return (
@@ -138,6 +151,15 @@ export function SubjectTabs({
           quizzes={gradebook.quizzes}
           grades={gradebook.grades}
           quizScores={gradebook.quizScores}
+        />
+      )}
+
+      {active === "announcements" && (
+        <AnnouncementsPanel
+          subjectId={subjectId}
+          offeringId={offeringId}
+          announcements={announcements}
+          signedUrls={announcementSignedUrls}
         />
       )}
     </div>

@@ -40,6 +40,7 @@ import {
   type StudentSubjectGrades,
   type StudentGradeItem,
 } from "./student-course-tabs";
+import type { StudentAnnouncementItem } from "./course-announcements";
 import { MonthlyPaymentCard } from "./monthly-payment-card";
 import { monthlyAmountForEnrollment } from "@/lib/monthly-payments";
 import {
@@ -426,6 +427,63 @@ export default async function StudentLearningHubPage({
     .filter((g) => g.items.length > 0);
 
 
+  // ── Course Announcements (migration 047) ──
+  // Fetch all published announcements for this offering's subjects,
+  // pinned first, then newest first. Students may only see announcements
+  // for offerings they're enrolled in (RLS enforces this).
+  const { data: announcementRows } = await supabase
+    .from("course_announcements")
+    .select("*")
+    .eq("offering_id", id)
+    .order("is_pinned", { ascending: false })
+    .order("created_at", { ascending: false });
+
+  type AnnouncementRaw = {
+    id: string;
+    offering_id: string;
+    subject_id: string | null;
+    title: string;
+    body: string;
+    attachment_type: string;
+    attachment_url: string | null;
+    attachment_name: string | null;
+    is_pinned: boolean;
+    created_at: string;
+  };
+
+  const subjectTitleById: Record<string, string> = {};
+  for (const s of typedSubjects) subjectTitleById[s.id] = s.title;
+
+  // Generate short-lived signed URLs for any attachments.
+  const rawAnnouncements = (announcementRows as AnnouncementRaw[] ?? []);
+  const attachmentPaths = rawAnnouncements
+    .map((a) => a.attachment_url)
+    .filter((p): p is string => !!p);
+  const announcementSignedUrls: Record<string, string> = {};
+  if (attachmentPaths.length > 0) {
+    const { data: signed } = await supabase.storage
+      .from("resources")
+      .createSignedUrls(attachmentPaths, 60 * 60);
+    for (const row of signed ?? []) {
+      if (row.path && row.signedUrl)
+        announcementSignedUrls[row.path] = row.signedUrl;
+    }
+  }
+
+  const studentAnnouncements: StudentAnnouncementItem[] = rawAnnouncements.map((a) => ({
+    id: a.id,
+    subjectId: a.subject_id,
+    subjectTitle: a.subject_id ? (subjectTitleById[a.subject_id] ?? "General") : "General",
+    title: a.title,
+    body: a.body,
+    attachmentType: (a.attachment_type as "text" | "pdf" | "image"),
+    attachmentName: a.attachment_name,
+    signedUrl: a.attachment_url ? (announcementSignedUrls[a.attachment_url] ?? null) : null,
+    isPinned: a.is_pinned,
+    createdAt: a.created_at,
+  }));
+
+
   // ── Header + metric derivations (all read-only) ──
 
   // How many classes have a recording the student can watch. Counting
@@ -630,6 +688,7 @@ export default async function StudentLearningHubPage({
             fileAssignments={studentAssignmentListItems}
             offeringId={id}
             gradeGroups={gradeGroups}
+            announcements={studentAnnouncements}
           >
             <SubjectAccordion
               subjects={typedSubjects}
